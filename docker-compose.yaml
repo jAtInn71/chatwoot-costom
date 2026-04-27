@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg14
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: chatwoot_prod
+      POSTGRES_USER: chatwoot_prod
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    networks:
+      - chatwoot-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatwoot_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass password
+    volumes:
+      - redis_data:/data
+    networks:
+      - chatwoot-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rails:
+    image: ghcr.io/tanishqgupta1/chatwoot-custom:latest
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      - '3001:3000'
+    volumes:
+      - storage_data:/app/storage
+      - ./logs:/app/log
+      - ./custom-widget/assets/vite:/app/public/vite:ro
+    environment:
+      - DB_POOL=${RAILS_MAX_THREADS:-5}
+      - DISABLE_DATABASE_ENVIRONMENT_CHECK=1
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=chatwoot_prod
+      - POSTGRES_DATABASE=chatwoot_prod
+      - FRONTEND_URL=http://localhost:3001
+    networks:
+      - chatwoot-network
+    command: >
+      sh -c "
+      export POSTGRES_HOST=postgres;
+      export POSTGRES_PASSWORD=password;
+      export POSTGRES_USER=chatwoot_prod;
+      export POSTGRES_DATABASE=chatwoot_prod;
+      export RAILS_ENV=production;
+      export FRONTEND_URL=http://localhost:3001;
+      rm -f /app/tmp/pids/server.pid &&
+      echo 'Waiting for database...' &&
+      until bundle exec rails db:version &>/dev/null; do
+        echo 'Database not ready yet, waiting...' &&
+        sleep 5
+      done &&
+      echo 'Database ready! Running setup...' &&
+      bundle exec rails db:chatwoot_prepare &&
+      echo 'Starting server...' &&
+      bundle exec rails s -p 3000 -b '0.0.0.0'
+      "
+
+  sidekiq:
+    image: ghcr.io/tanishqgupta1/chatwoot-custom:latest
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - storage_data:/app/storage
+    networks:
+      - chatwoot-network
+    environment:
+      - FRONTEND_URL=http://localhost:3001
+    command: bundle exec sidekiq -C config/sidekiq.yml
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+
+networks:
+  chatwoot-network:
+    driver: bridge

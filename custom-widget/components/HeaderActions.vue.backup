@@ -1,0 +1,224 @@
+<script>
+import { mapGetters } from 'vuex';
+import { IFrameHelper, RNHelper } from 'widget/helpers/utils';
+import { popoutChatWindow } from '../helpers/popoutHelper';
+import FluentIcon from 'shared/components/FluentIcon/Index.vue';
+import configMixin from 'widget/mixins/configMixin';
+import { CONVERSATION_STATUS } from 'shared/constants/messages';
+
+export default {
+  name: 'HeaderActions',
+  components: { FluentIcon },
+  mixins: [configMixin],
+  props: {
+    showPopoutButton: {
+      type: Boolean,
+      default: false,
+    },
+    showEndConversationButton: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  computed: {
+    ...mapGetters({
+      conversationAttributes: 'conversationAttributes/getConversationParams',
+      canUserEndConversation: 'appConfig/getCanUserEndConversation',
+    }),
+    canLeaveConversation() {
+      return [
+        CONVERSATION_STATUS.OPEN,
+        CONVERSATION_STATUS.SNOOZED,
+        CONVERSATION_STATUS.PENDING,
+      ].includes(this.conversationStatus);
+    },
+    isIframe() {
+      return IFrameHelper.isIFrame();
+    },
+    isRNWebView() {
+      return RNHelper.isRNWebView();
+    },
+    showHeaderActions() {
+      return this.isIframe || this.isRNWebView || this.hasWidgetOptions;
+    },
+    conversationStatus() {
+      return this.conversationAttributes.status;
+    },
+    hasWidgetOptions() {
+      return this.showPopoutButton || this.conversationStatus === 'open';
+    },
+    canStartNewChat() {
+      return [
+        CONVERSATION_STATUS.OPEN,
+        CONVERSATION_STATUS.SNOOZED,
+        CONVERSATION_STATUS.PENDING,
+        CONVERSATION_STATUS.RESOLVED,
+      ].includes(this.conversationStatus);
+    },
+  },
+  methods: {
+    popoutWindow() {
+      this.sendCloseMessage();
+      const {
+        location: { origin },
+        chatwootWebChannel: { websiteToken },
+        authToken,
+      } = window;
+      popoutChatWindow(
+        origin,
+        websiteToken,
+        this.$root.$i18n.locale,
+        authToken
+      );
+    },
+
+    resetSession() {
+      const keys = [
+        'cwc-unique-id',
+        'cwc-session',
+        'cw_contact_uuid',
+        'cw_conversation_id',
+        'chatwoot_contact_id',
+        'chatwoot_conversation_id',
+        'chatwootContactIdentity',
+      ];
+      keys.forEach(k => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+      document.cookie.split(';').forEach(c => {
+        const name = c.trim().split('=')[0];
+        if (name.startsWith('cw_') || name.startsWith('cwc')) {
+          document.cookie =
+            name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+        }
+      });
+    },
+
+    sendCloseMessage() {
+      if (IFrameHelper.isIFrame()) {
+        IFrameHelper.sendMessage({ event: 'closeWindow' });
+      } else if (RNHelper.isRNWebView) {
+        RNHelper.sendMessage({ type: 'close-widget' });
+      }
+    },
+
+    closeWindow() {
+      this.resetSession();
+      this.sendCloseMessage();
+    },
+
+    async resolveConversation() {
+      await this.$store.dispatch('conversation/resolveConversation');
+      await this.$router.replace({ name: 'home' });
+      this.resetSession();
+      this.sendCloseMessage();
+    },
+
+    async startNewChat() {
+      if (
+        [
+          CONVERSATION_STATUS.OPEN,
+          CONVERSATION_STATUS.SNOOZED,
+          CONVERSATION_STATUS.PENDING,
+        ].includes(this.conversationStatus)
+      ) {
+        await this.$store.dispatch('conversation/resolveConversation');
+      }
+      this.resetSession();
+      await this.$router.replace({ name: 'home' });
+    },
+  },
+};
+</script>
+
+<!-- eslint-disable-next-line vue/no-root-v-if -->
+<template>
+  <div v-if="showHeaderActions" class="actions flex items-center gap-3">
+
+    <!-- New Chat button -->
+    <button
+      v-if="canStartNewChat"
+      class="button transparent compact new-chat-button"
+      title="New Chat"
+      @click="startNewChat"
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        class="text-n-slate-12"
+      >
+        <path
+          d="M12 5H7C5.89543 5 5 5.89543 5 7V17C5 18.1046 5.89543 19 7 19H17C18.1046 19 19 18.1046 19 17V12"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M17.5 3.5L20.5 6.5L12 15H9V12L17.5 3.5Z"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
+
+    <!-- Exit / End conversation button -->
+    <button
+      v-if="
+        canLeaveConversation &&
+        canUserEndConversation &&
+        hasEndConversationEnabled &&
+        showEndConversationButton
+      "
+      class="button transparent compact"
+      :title="$t('END_CONVERSATION')"
+      @click="resolveConversation"
+    >
+      <FluentIcon icon="sign-out" size="22" class="text-n-slate-12" />
+    </button>
+
+    <!-- Popout button -->
+    <button
+      v-if="showPopoutButton"
+      class="button transparent compact new-window--button"
+      @click="popoutWindow"
+    >
+      <FluentIcon icon="open" size="22" class="text-n-slate-12" />
+    </button>
+
+    <!-- Close / Dismiss button -->
+    <button
+      class="button transparent compact close-button"
+      :class="{ 'rn-close-button': isRNWebView }"
+      @click="closeWindow"
+    >
+      <FluentIcon icon="dismiss" size="24" class="text-n-slate-12" />
+    </button>
+
+  </div>
+</template>
+
+<style scoped lang="scss">
+.actions {
+  .close-button {
+    display: none;
+  }
+  .rn-close-button {
+    display: block !important;
+  }
+  .new-chat-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    &:hover svg {
+      color: var(--color-woot);
+    }
+  }
+}
+</style>
