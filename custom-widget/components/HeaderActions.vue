@@ -24,7 +24,6 @@ export default {
   data() {
     return {
       isEndingChat: false,
-      showConfirmNewChat: false,
       showConfirmExitChat: false,
     };
   },
@@ -57,14 +56,6 @@ export default {
     hasWidgetOptions() {
       return this.showPopoutButton || this.conversationStatus === 'open';
     },
-    canStartNewChat() {
-      return [
-        CONVERSATION_STATUS.OPEN,
-        CONVERSATION_STATUS.SNOOZED,
-        CONVERSATION_STATUS.PENDING,
-        CONVERSATION_STATUS.RESOLVED,
-      ].includes(this.conversationStatus);
-    },
     canEndChat() {
       return [
         CONVERSATION_STATUS.OPEN,
@@ -84,15 +75,10 @@ export default {
         chatwootWebChannel: { websiteToken },
         authToken,
       } = window;
-      popoutChatWindow(
-        origin,
-        websiteToken,
-        this.$root.$i18n.locale,
-        authToken
-      );
+      popoutChatWindow(origin, websiteToken, this.$root.$i18n.locale, authToken);
     },
 
-    // ── Get current conversation ID from all possible storage keys ──
+    // ── Get conversation ID from all storage locations ──
     getConversationId() {
       const keys = [
         'chatwoot_conversation_id',
@@ -100,11 +86,9 @@ export default {
         'cwc-conversation-id',
       ];
       for (const key of keys) {
-        const val =
-          localStorage.getItem(key) || sessionStorage.getItem(key);
+        const val = localStorage.getItem(key) || sessionStorage.getItem(key);
         if (val) return val;
       }
-      // Also scan all localStorage keys for anything with "conversation"
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.toLowerCase().includes('conversation')) {
@@ -114,25 +98,21 @@ export default {
       return null;
     },
 
-    // ── Resolve conversation via Chatwoot REST API (same as index.html) ──
+    // ── Resolve conversation via REST API ──
     async resolveConversationViaApi(conversationId) {
       if (!conversationId) return;
       try {
-        // Get baseUrl and account info from window (set by Chatwoot SDK)
         const baseUrl =
-          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig
-            ?.baseUrl ||
+          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig?.baseUrl ||
           window.location.origin;
         const accountId =
-          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig
-            ?.accountId ||
+          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig?.accountId ||
           window.chatwootWebChannel?.accountId;
         const apiToken =
-          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig
-            ?.hmacToken ||
+          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig?.hmacToken ||
           window.chatwootWebChannel?.hmacToken;
 
-        if (!accountId) return; // can't resolve without account info
+        if (!accountId) return;
 
         await fetch(
           `${baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/toggle_status`,
@@ -146,42 +126,32 @@ export default {
           }
         );
       } catch (e) {
-        // Silently fail — session will still be cleared
+        // silently fail
       }
     },
 
-    // ── Clear ALL Chatwoot session data from storage ──
+    // ── Clear ALL Chatwoot data from storage ──
+    // This ensures next widget open starts fresh with pre-chat form
     clearAllSession() {
-      // Clear localStorage
       const lsKeys = Object.keys(localStorage).filter(
-        k =>
-          k.includes('chatwoot') ||
-          k.includes('cw_') ||
-          k.includes('cwc')
+        k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
       );
       lsKeys.forEach(k => localStorage.removeItem(k));
 
-      // Clear sessionStorage
       const ssKeys = Object.keys(sessionStorage).filter(
-        k =>
-          k.includes('chatwoot') ||
-          k.includes('cw_') ||
-          k.includes('cwc')
+        k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
       );
       ssKeys.forEach(k => sessionStorage.removeItem(k));
 
-      // Clear cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
-          document.cookie =
-            name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
         }
       });
     },
 
     resetSession() {
-      // Keep old method for compatibility — calls full clear
       this.clearAllSession();
     },
 
@@ -198,47 +168,30 @@ export default {
       this.sendCloseMessage();
     },
 
-    async resolveConversation() {
-      try {
-        await this.$store.dispatch('conversation/resolveConversation');
-      } catch (e) {
-        // conversation may already be resolved
-      }
-      this.resetSession();
-      await this.$router.replace({ name: 'home' });
-    },
-
-    requestNewChat() {
-      this.showConfirmExitChat = false;
-      this.showConfirmNewChat = !this.showConfirmNewChat;
-    },
-
     requestExitChat() {
-      this.showConfirmNewChat = false;
       this.showConfirmExitChat = !this.showConfirmExitChat;
     },
 
     dismissConfirms() {
-      this.showConfirmNewChat = false;
       this.showConfirmExitChat = false;
     },
 
-    // ✏ New Chat — fully resets session + store + SDK
-    async startNewChat() {
+    // ✖ Exit Chat:
+    // Resolves conversation → clears ALL storage → closes widget
+    // Next time user clicks widget bubble = fresh pre-chat form
+    async endChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
-      this.showConfirmNewChat = false;
+      this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Get current conversation ID from storage
+        // Step 1: Resolve via REST API
         const conversationId = this.getConversationId();
-
-        // Step 2: Resolve via REST API
         if (conversationId) {
           await this.resolveConversationViaApi(conversationId);
         }
 
-        // Step 3: Resolve via Vuex store dispatch
+        // Step 2: Resolve via Vuex store
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -251,33 +204,12 @@ export default {
           } catch (e) {}
         }
 
-        // Step 4: Clear ALL session storage + cookies
+        // Step 3: Clear ALL session data from storage
+        // This is the KEY step — next widget open finds no session
+        // so it shows pre-chat form / "Start Conversation" fresh
         this.clearAllSession();
 
-        // Step 5: Reset Vuex store modules to clear in-memory state
-        // This forces widget home to show "Start Conversation" not "Continue"
-        try {
-          this.$store.commit('conversation/SET_CURRENT_CHAT_ID', null);
-        } catch (e) {}
-        try {
-          this.$store.commit('conversation/CLEAR_CONVERSATION', null);
-        } catch (e) {}
-        try {
-          this.$store.commit('contacts/SET_CURRENT_USER', null);
-        } catch (e) {}
-
-        // Step 6: Reset entire Vuex store state by replacing it
-        try {
-          const storeModules = this.$store._modules.root._children;
-          if (storeModules.conversation) {
-            this.$store.dispatch('conversation/clearConversation').catch(() => {});
-          }
-          if (storeModules.contacts) {
-            this.$store.dispatch('contacts/clearContact').catch(() => {});
-          }
-        } catch (e) {}
-
-        // Step 7: Reset Chatwoot SDK (this is the key fix — fully reinitializes widget)
+        // Step 4: Reset Chatwoot SDK
         if (window.$chatwoot) {
           if (typeof window.$chatwoot.reset === 'function') {
             window.$chatwoot.reset();
@@ -287,58 +219,16 @@ export default {
           }
         }
 
-        // Step 8: Remove widget iframes from DOM to force full reload
+        // Step 5: Remove widget iframe + bubble from DOM
+        // Forces full reinitialization next time widget is opened
         const widgetHolder = document.querySelector('.woot-widget-holder');
-        if (widgetHolder) widgetHolder.innerHTML = '';
+        if (widgetHolder) widgetHolder.remove();
+        const widgetBubble = document.querySelector('.woot--bubble-holder');
+        if (widgetBubble) widgetBubble.remove();
 
-        // Step 9: Navigate to home — will now show "Start Conversation"
-        await this.$router.replace({ name: 'home' });
-
-        // Step 10: Force page reload as final fallback to clear all state
-        setTimeout(() => {
-          window.location.reload();
-        }, 300);
-
-      } catch (e) {
-        this.clearAllSession();
-        await this.$router.replace({ name: 'home' });
-        setTimeout(() => window.location.reload(), 300);
-      } finally {
-        this.isEndingChat = false;
-      }
-    },
-
-    // ✖ End Chat — resolves + resets + closes widget completely
-    async endChat() {
-      if (this.isEndingChat) return;
-      this.isEndingChat = true;
-      this.showConfirmExitChat = false;
-      try {
-        const conversationId = this.getConversationId();
-        if (conversationId) {
-          await this.resolveConversationViaApi(conversationId);
-        }
-        if (
-          [
-            CONVERSATION_STATUS.OPEN,
-            CONVERSATION_STATUS.SNOOZED,
-            CONVERSATION_STATUS.PENDING,
-          ].includes(this.conversationStatus)
-        ) {
-          try {
-            await this.$store.dispatch('conversation/resolveConversation');
-          } catch (e) {
-            // ignore
-          }
-        }
-        this.clearAllSession();
+        // Step 6: Close widget
         this.sendCloseMessage();
-        if (
-          window.$chatwoot &&
-          typeof window.$chatwoot.reset === 'function'
-        ) {
-          window.$chatwoot.reset();
-        }
+
       } catch (e) {
         this.clearAllSession();
         this.sendCloseMessage();
@@ -354,7 +244,7 @@ export default {
 <template>
   <div v-if="showHeaderActions" class="actions flex items-center gap-1">
 
-    <!-- 📞 ElevenLabs AI Call button in header -->
+    <!-- 📞 ElevenLabs AI Call button -->
     <ElevenLabsVoiceButton
       v-if="showCallButton"
       :color="widgetColor"
@@ -362,53 +252,7 @@ export default {
       class="header-call-btn"
     />
 
-    <!-- ✏ New Chat button — with inline confirmation popover -->
-    <div v-if="canStartNewChat" class="relative">
-      <button
-        class="header-action-btn new-chat-btn"
-        :class="{ active: showConfirmNewChat }"
-        :disabled="isEndingChat"
-        title="New Chat"
-        @click="requestNewChat"
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M12 5H7C5.89543 5 5 5.89543 5 7V17C5 18.1046 5.89543 19 7 19H17C18.1046 19 19 18.1046 19 17V12"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M17.5 3.5L20.5 6.5L12 15H9V12L17.5 3.5Z"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
-
-      <!-- Confirmation popover for New Chat -->
-      <div v-if="showConfirmNewChat" class="confirm-popover confirm-new">
-        <p class="confirm-text">Start a new conversation?<br/><span class="confirm-sub">Current chat will be resolved.</span></p>
-        <div class="confirm-actions">
-          <button class="confirm-btn confirm-cancel" @click="dismissConfirms">Cancel</button>
-          <button class="confirm-btn confirm-ok confirm-ok--new" :disabled="isEndingChat" @click="startNewChat">
-            <span v-if="isEndingChat" class="spinner" />
-            <span v-else>New Chat</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ✖ Exit Chat button — with inline confirmation popover -->
+    <!-- ✖ Exit Chat button — with confirmation popover -->
     <div v-if="canEndChat && showEndConversationButton" class="relative">
       <button
         class="header-action-btn exit-chat-btn"
@@ -448,12 +292,24 @@ export default {
         </svg>
       </button>
 
-      <!-- Confirmation popover for Exit Chat -->
-      <div v-if="showConfirmExitChat" class="confirm-popover confirm-exit">
-        <p class="confirm-text">End and close this chat?<br/><span class="confirm-sub">Conversation will be resolved.</span></p>
+      <!-- Confirmation popover -->
+      <div v-if="showConfirmExitChat" class="confirm-popover">
+        <p class="confirm-text">
+          End and close this chat?
+          <span class="confirm-sub">
+            Conversation will be resolved.<br/>
+            Next open will start fresh.
+          </span>
+        </p>
         <div class="confirm-actions">
-          <button class="confirm-btn confirm-cancel" @click="dismissConfirms">Cancel</button>
-          <button class="confirm-btn confirm-ok confirm-ok--exit" :disabled="isEndingChat" @click="endChat">
+          <button class="confirm-btn confirm-cancel" @click="dismissConfirms">
+            Cancel
+          </button>
+          <button
+            class="confirm-btn confirm-ok confirm-ok--exit"
+            :disabled="isEndingChat"
+            @click="endChat"
+          >
             <span v-if="isEndingChat" class="spinner" />
             <span v-else>Exit Chat</span>
           </button>
@@ -470,7 +326,7 @@ export default {
       <FluentIcon icon="open" size="20" class="text-n-slate-12" />
     </button>
 
-    <!-- ✕ Close / Dismiss button -->
+    <!-- ✕ Close button (RN WebView only) -->
     <button
       class="header-action-btn close-button"
       :class="{ 'rn-close-button': isRNWebView }"
@@ -520,22 +376,6 @@ export default {
   }
 }
 
-.new-chat-btn {
-  color: var(--color-woot, #1f93ff);
-
-  &:hover:not(:disabled) {
-    background: rgba(31, 147, 255, 0.1);
-  }
-
-  &.active {
-    background: rgba(31, 147, 255, 0.12);
-  }
-
-  svg path {
-    stroke: currentColor;
-  }
-}
-
 .exit-chat-btn {
   color: #ef4444;
 
@@ -555,6 +395,7 @@ export default {
 .close-button {
   display: none;
 }
+
 .rn-close-button {
   display: flex !important;
 }
@@ -574,7 +415,7 @@ export default {
   top: calc(100% + 10px);
   right: 0;
   z-index: 9999;
-  min-width: 210px;
+  min-width: 220px;
   background: #ffffff;
   border-radius: 12px;
   box-shadow:
@@ -600,14 +441,8 @@ export default {
 }
 
 @keyframes popoverIn {
-  from {
-    opacity: 0;
-    transform: translateY(-6px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 
 .confirm-text {
@@ -623,7 +458,8 @@ export default {
   font-size: 11.5px;
   font-weight: 400;
   color: #64748b;
-  margin-top: 2px;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 .confirm-actions {
@@ -641,23 +477,14 @@ export default {
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
 
-  &:active {
-    transform: scale(0.97);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+  &:active { transform: scale(0.97); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .confirm-cancel {
   background: #f1f5f9;
   color: #475569;
-
-  &:hover {
-    background: #e2e8f0;
-  }
+  &:hover { background: #e2e8f0; }
 }
 
 .confirm-ok {
@@ -668,20 +495,9 @@ export default {
   min-width: 72px;
 }
 
-.confirm-ok--new {
-  background: var(--color-woot, #1f93ff);
-
-  &:hover:not(:disabled) {
-    background: #1a7fd4;
-  }
-}
-
 .confirm-ok--exit {
   background: #ef4444;
-
-  &:hover:not(:disabled) {
-    background: #dc2626;
-  }
+  &:hover:not(:disabled) { background: #dc2626; }
 }
 
 .spinner {
@@ -702,30 +518,18 @@ export default {
   .confirm-popover {
     background: #1e293b;
     border-color: rgba(255, 255, 255, 0.1);
-
     &::before {
       background: #1e293b;
       border-color: rgba(255, 255, 255, 0.1);
     }
   }
-
-  .confirm-text {
-    color: #f1f5f9;
-  }
-
-  .confirm-sub {
-    color: #94a3b8;
-  }
-
+  .confirm-text { color: #f1f5f9; }
+  .confirm-sub  { color: #94a3b8; }
   .confirm-cancel {
     background: #334155;
     color: #cbd5e1;
-
-    &:hover {
-      background: #475569;
-    }
+    &:hover { background: #475569; }
   }
-
   .header-action-btn:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.08);
   }
