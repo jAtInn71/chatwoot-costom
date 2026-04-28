@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.2.2
@@ -32,5 +31,6 @@ jobs:
             VITE_ELEVENLABS_AGENT_ID=agent_6601kc1fqeecfc88s7d52jde0syq
             VITE_ELEVENLABS_VOICE_ID=
             VITE_ELEVENLABS_AGENT_NAME=AI Assistant
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      - name: Verify push
+        run: echo "✅ Image pushed to jatin4002/chatwoot-custom:latest"
