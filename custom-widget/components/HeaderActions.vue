@@ -223,27 +223,22 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ✏ New Chat — same logic as index.html newChat()
-    // 1. Get conversation ID
-    // 2. Resolve via API
-    // 3. Clear all session storage
-    // 4. Reset SDK
-    // 5. Navigate to home (fresh start)
+    // ✏ New Chat — fully resets session + store + SDK
     async startNewChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
       this.showConfirmNewChat = false;
 
       try {
-        // Step 1: Get current conversation ID
+        // Step 1: Get current conversation ID from storage
         const conversationId = this.getConversationId();
 
-        // Step 2: Resolve via API (like index.html does)
+        // Step 2: Resolve via REST API
         if (conversationId) {
           await this.resolveConversationViaApi(conversationId);
         }
 
-        // Also try via Vuex store dispatch as fallback
+        // Step 3: Resolve via Vuex store dispatch
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -253,29 +248,61 @@ export default {
         ) {
           try {
             await this.$store.dispatch('conversation/resolveConversation');
-          } catch (e) {
-            // ignore — API call above already handled it
+          } catch (e) {}
+        }
+
+        // Step 4: Clear ALL session storage + cookies
+        this.clearAllSession();
+
+        // Step 5: Reset Vuex store modules to clear in-memory state
+        // This forces widget home to show "Start Conversation" not "Continue"
+        try {
+          this.$store.commit('conversation/SET_CURRENT_CHAT_ID', null);
+        } catch (e) {}
+        try {
+          this.$store.commit('conversation/CLEAR_CONVERSATION', null);
+        } catch (e) {}
+        try {
+          this.$store.commit('contacts/SET_CURRENT_USER', null);
+        } catch (e) {}
+
+        // Step 6: Reset entire Vuex store state by replacing it
+        try {
+          const storeModules = this.$store._modules.root._children;
+          if (storeModules.conversation) {
+            this.$store.dispatch('conversation/clearConversation').catch(() => {});
+          }
+          if (storeModules.contacts) {
+            this.$store.dispatch('contacts/clearContact').catch(() => {});
+          }
+        } catch (e) {}
+
+        // Step 7: Reset Chatwoot SDK (this is the key fix — fully reinitializes widget)
+        if (window.$chatwoot) {
+          if (typeof window.$chatwoot.reset === 'function') {
+            window.$chatwoot.reset();
+          }
+          if (typeof window.$chatwoot.hide === 'function') {
+            window.$chatwoot.hide();
           }
         }
 
-        // Step 3: Clear ALL session data (localStorage + sessionStorage + cookies)
-        this.clearAllSession();
+        // Step 8: Remove widget iframes from DOM to force full reload
+        const widgetHolder = document.querySelector('.woot-widget-holder');
+        if (widgetHolder) widgetHolder.innerHTML = '';
 
-        // Step 4: Reset SDK if available (same as index.html)
-        if (
-          window.$chatwoot &&
-          typeof window.$chatwoot.reset === 'function'
-        ) {
-          window.$chatwoot.reset();
-        }
-
-        // Step 5: Navigate to home — fresh conversation will start
+        // Step 9: Navigate to home — will now show "Start Conversation"
         await this.$router.replace({ name: 'home' });
+
+        // Step 10: Force page reload as final fallback to clear all state
+        setTimeout(() => {
+          window.location.reload();
+        }, 300);
 
       } catch (e) {
-        // Fallback — clear and go home even if something fails
         this.clearAllSession();
         await this.$router.replace({ name: 'home' });
+        setTimeout(() => window.location.reload(), 300);
       } finally {
         this.isEndingChat = false;
       }
