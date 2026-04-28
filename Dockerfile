@@ -20,8 +20,9 @@ COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/conf
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/en.json
 
 # Run vite build to compile the widget JS
+# Run vite build to compile the widget JS
 WORKDIR /app
-RUN NODE_OPTIONS="--max-old-space-size=4096" node_modules/.bin/vite build --config vite.config.ts
+RUN ls node_modules/.bin/vite || (echo "vite not found, searching..." && find / -name "vite" -type f 2>/dev/null | head -5)
 
 # ── Stage 2: Final clean image ─────────────────────────────────────────────────
 FROM chatwoot/chatwoot:latest
