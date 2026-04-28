@@ -5,11 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chatwoot Widget Test</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -23,23 +19,15 @@
     .container {
       background: white;
       border-radius: 10px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
       padding: 40px;
       max-width: 600px;
       width: 90%;
     }
 
-    h1 {
-      color: #333;
-      margin-bottom: 20px;
-      font-size: 32px;
-    }
+    h1 { color: #333; margin-bottom: 20px; font-size: 32px; }
 
-    p {
-      color: #666;
-      line-height: 1.6;
-      margin-bottom: 15px;
-    }
+    p { color: #666; line-height: 1.6; margin-bottom: 15px; }
 
     .status {
       background: #f0f4ff;
@@ -49,10 +37,7 @@
       margin: 20px 0;
     }
 
-    .status-text {
-      color: #667eea;
-      font-weight: bold;
-    }
+    .status-text { color: #667eea; font-weight: bold; }
 
     button {
       background: #667eea;
@@ -68,32 +53,15 @@
       display: inline-block;
     }
 
-    button:hover {
-      background: #764ba2;
-    }
+    button:hover { background: #764ba2; }
 
-    .btn-new-chat {
-      background: #4caf50;
-    }
+    .btn-new-chat { background: #4caf50; }
+    .btn-new-chat:hover { background: #45a049; }
 
-    .btn-new-chat:hover {
-      background: #45a049;
-    }
+    .btn-exit-chat { background: #f44336; }
+    .btn-exit-chat:hover { background: #da190b; }
 
-    .btn-exit-chat {
-      background: #f44336;
-    }
-
-    .btn-exit-chat:hover {
-      background: #da190b;
-    }
-
-    .button-group {
-      margin-top: 20px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
+    .button-group { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; }
 
     .widget-status {
       margin-top: 30px;
@@ -113,10 +81,7 @@
       animation: pulse 1.5s infinite;
     }
 
-    .dot.active {
-      background: #4caf50;
-      animation: none;
-    }
+    .dot.active { background: #4caf50; animation: none; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -127,9 +92,9 @@
 <body>
   <div class="container">
     <h1>💬 Chatwoot Widget</h1>
-    
+
     <p>Welcome! The Chatwoot chat widget should appear in the bottom-right corner of this page.</p>
-    
+
     <div class="status">
       <p><span class="status-text">✓ Status:</span> Widget is loaded and active</p>
     </div>
@@ -142,7 +107,7 @@
     </ul>
 
     <button onclick="toggleWidget()">💬 Toggle Chat Widget</button>
-    
+
     <div class="button-group">
       <button class="btn-new-chat" onclick="newChat()">🔄 New Chat</button>
       <button class="btn-exit-chat" onclick="exitChat()">❌ Exit Chat</button>
@@ -155,114 +120,151 @@
 
   <!-- Chatwoot Widget Script -->
   <script>
+    // ── CONFIG ────────────────────────────────────────────────────────────────
+    const BASE_URL    = "https://gratifiedly-untentacled-janella.ngrok-free.dev";
+    const WEBSITE_TOKEN = "RgPAJW8PwMCZwCkwMZkgiJkG";
+    const ACCOUNT_ID  = 7;           // change if your account ID is different
+    const API_TOKEN   = "8MRk5RAWWMxDZRukCSjT3PVw"; // your Chatwoot API access token
+    // ─────────────────────────────────────────────────────────────────────────
+
     window.chatwootSettings = {
       position: "right",
       type: "standard",
     };
 
-    (function(d,t) {
-      var BASE_URL="http://localhost:3001";
-      var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
-      g.src=BASE_URL+"/packs/js/sdk.js";
+    (function(d, t) {
+      var g = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      g.src   = BASE_URL + "/packs/js/sdk.js";
       g.defer = true;
       g.async = true;
-      s.parentNode.insertBefore(g,s);
-      g.onload=function(){
+      s.parentNode.insertBefore(g, s);
+      g.onload = function() {
         window.chatwootSDK.run({
-          websiteToken: "RgPAJW8PwMCZwCkwMZkgiJkG",
-          baseUrl: BASE_URL
-        })
-      }
-    })(document,"script");
+          websiteToken: WEBSITE_TOKEN,
+          baseUrl: BASE_URL,
+        });
+        document.getElementById('widget-status-text').textContent = 'Widget is ready';
+      };
+    })(document, "script");
 
-    function toggleWidget() {
-      if (window.chatwootSDK && window.chatwootSDK.toggle) {
-        window.chatwootSDK.toggle();
+    // ── Helper: get current conversation ID ──────────────────────────────────
+    function getConversationId() {
+      const keys = [
+        'chatwoot_conversation_id',
+        'cw_conversation_id',
+        'cwc-conversation-id',
+      ];
+      for (const key of keys) {
+        const val = localStorage.getItem(key) || sessionStorage.getItem(key);
+        if (val) return val;
+      }
+      // Also check all keys for anything containing conversation
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.toLowerCase().includes('conversation')) {
+          return localStorage.getItem(key);
+        }
+      }
+      return null;
+    }
+
+    // ── Helper: clear all Chatwoot session data ───────────────────────────────
+    function clearSession() {
+      // Clear localStorage
+      const lsKeys = Object.keys(localStorage).filter(k =>
+        k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
+      );
+      lsKeys.forEach(k => localStorage.removeItem(k));
+
+      // Clear sessionStorage
+      const ssKeys = Object.keys(sessionStorage).filter(k =>
+        k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
+      );
+      ssKeys.forEach(k => sessionStorage.removeItem(k));
+
+      console.log('🗑️ Session cleared');
+    }
+
+    // ── Helper: resolve conversation via API ──────────────────────────────────
+    async function resolveConversation(conversationId) {
+      if (!conversationId) return;
+      try {
+        const res = await fetch(
+          `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'api_access_token': API_TOKEN,
+            },
+            body: JSON.stringify({ status: 'resolved' }),
+          }
+        );
+        if (res.ok) {
+          console.log('✅ Conversation resolved');
+        } else {
+          console.warn('⚠️ Could not resolve conversation:', res.status);
+        }
+      } catch (e) {
+        console.warn('⚠️ Resolve API error:', e);
       }
     }
 
-    function newChat() {
-      // Clear all Chatwoot session data
-      console.log('🔄 Starting new chat...');
-      
-      // Clear localStorage
-      Object.keys(localStorage).forEach(key => {
-        if (key.includes('chatwoot') || key.includes('cw_')) {
-          localStorage.removeItem(key);
-        }
-      });
-      
-      // Clear sessionStorage
-      Object.keys(sessionStorage).forEach(key => {
-        if (key.includes('chatwoot') || key.includes('cw_')) {
-          sessionStorage.removeItem(key);
-        }
-      });
-      
-      // Remove the widget iframe
-      const widgetHolder = document.querySelector('.woot-widget-holder');
-      if (widgetHolder) {
-        widgetHolder.remove();
+    // ── Toggle widget ─────────────────────────────────────────────────────────
+    function toggleWidget() {
+      if (window.$chatwoot) {
+        window.$chatwoot.toggle();
       }
-      
-      // Reload the Chatwoot SDK
+    }
+
+    // ── New Chat ──────────────────────────────────────────────────────────────
+    async function newChat() {
+      console.log('🔄 Starting new chat...');
+      document.getElementById('widget-status-text').textContent = 'Starting new chat...';
+
+      const conversationId = getConversationId();
+      if (conversationId) {
+        await resolveConversation(conversationId);
+      }
+
+      clearSession();
+
+      // Reset SDK if available
+      if (window.$chatwoot && typeof window.$chatwoot.reset === 'function') {
+        window.$chatwoot.reset();
+      }
+
       setTimeout(() => {
         location.reload();
       }, 500);
     }
 
-    function exitChat() {
-      // Get the conversation ID
-      const conversationId = localStorage.getItem('chatwoot_conversation_id') || 
-                             localStorage.getItem('cw_conversation_id') ||
-                             sessionStorage.getItem('cw_conversation_id');
-      
-      console.log('📤 Exiting chat. Conversation ID:', conversationId);
-      
-      // Mark conversation as resolved using API
+    // ── Exit Chat ─────────────────────────────────────────────────────────────
+    async function exitChat() {
+      console.log('📤 Exiting chat...');
+      document.getElementById('widget-status-text').textContent = 'Closing chat...';
+
+      const conversationId = getConversationId();
       if (conversationId) {
-        const BASE_URL = "http://localhost:3001";
-        const API_TOKEN = "8MRk5RAWWMxDZRukCSjT3PVw"; // Your API token from .env
-        
-        fetch(`${BASE_URL}/api/v1/accounts/7/conversations/${conversationId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'api_access_token': API_TOKEN
-          },
-          body: JSON.stringify({
-            status: 'resolved'
-          })
-        })
-        .then(response => {
-          if (response.ok) {
-            console.log('✅ Conversation marked as resolved');
-          }
-        })
-        .catch(error => {
-          console.log('ℹ️ Chat closed (resolution status may require API configuration)');
-        });
+        await resolveConversation(conversationId);
       }
-      
-      // Hide the widget
-      if (window.chatwootSDK && window.chatwootSDK.hide) {
-        window.chatwootSDK.hide();
+
+      clearSession();
+
+      // Hide widget
+      if (window.$chatwoot) {
+        if (typeof window.$chatwoot.hide === 'function') window.$chatwoot.hide();
+        if (typeof window.$chatwoot.reset === 'function') window.$chatwoot.reset();
       }
-      
-      // Clear session data
-      Object.keys(localStorage).forEach(key => {
-        if (key.includes('chatwoot') || key.includes('cw_')) {
-          localStorage.removeItem(key);
-        }
-      });
-      
-      Object.keys(sessionStorage).forEach(key => {
-        if (key.includes('chatwoot') || key.includes('cw_')) {
-          sessionStorage.removeItem(key);
-        }
-      });
-      
-      console.log('✅ Chat widget closed and session cleared');
+
+      // Remove widget iframe
+      const holder = document.querySelector('.woot-widget-holder');
+      if (holder) holder.remove();
+      const bubble = document.querySelector('.woot--bubble-holder');
+      if (bubble) bubble.remove();
+
+      document.getElementById('widget-status-text').textContent = 'Chat closed ✅';
+      console.log('✅ Chat exited and resolved');
     }
   </script>
 </body>

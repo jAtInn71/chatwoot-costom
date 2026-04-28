@@ -57,7 +57,6 @@ export default {
     hasWidgetOptions() {
       return this.showPopoutButton || this.conversationStatus === 'open';
     },
-    // Show New Chat button whenever there is an active/ended conversation
     canStartNewChat() {
       return [
         CONVERSATION_STATUS.OPEN,
@@ -66,7 +65,6 @@ export default {
         CONVERSATION_STATUS.RESOLVED,
       ].includes(this.conversationStatus);
     },
-    // Show End Chat button only when conversation is active
     canEndChat() {
       return [
         CONVERSATION_STATUS.OPEN,
@@ -74,7 +72,6 @@ export default {
         CONVERSATION_STATUS.PENDING,
       ].includes(this.conversationStatus);
     },
-    // Show ElevenLabs call button in header
     showCallButton() {
       return this.elevenLabsEnabled;
     },
@@ -95,21 +92,85 @@ export default {
       );
     },
 
-    // Clear all Chatwoot session data from storage
-    resetSession() {
+    // ── Get current conversation ID from all possible storage keys ──
+    getConversationId() {
       const keys = [
-        'cwc-unique-id',
-        'cwc-session',
-        'cw_contact_uuid',
-        'cw_conversation_id',
-        'chatwoot_contact_id',
         'chatwoot_conversation_id',
-        'chatwootContactIdentity',
+        'cw_conversation_id',
+        'cwc-conversation-id',
       ];
-      keys.forEach(k => {
-        localStorage.removeItem(k);
-        sessionStorage.removeItem(k);
-      });
+      for (const key of keys) {
+        const val =
+          localStorage.getItem(key) || sessionStorage.getItem(key);
+        if (val) return val;
+      }
+      // Also scan all localStorage keys for anything with "conversation"
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.toLowerCase().includes('conversation')) {
+          return localStorage.getItem(key);
+        }
+      }
+      return null;
+    },
+
+    // ── Resolve conversation via Chatwoot REST API (same as index.html) ──
+    async resolveConversationViaApi(conversationId) {
+      if (!conversationId) return;
+      try {
+        // Get baseUrl and account info from window (set by Chatwoot SDK)
+        const baseUrl =
+          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig
+            ?.baseUrl ||
+          window.location.origin;
+        const accountId =
+          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig
+            ?.accountId ||
+          window.chatwootWebChannel?.accountId;
+        const apiToken =
+          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig
+            ?.hmacToken ||
+          window.chatwootWebChannel?.hmacToken;
+
+        if (!accountId) return; // can't resolve without account info
+
+        await fetch(
+          `${baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/toggle_status`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(apiToken ? { api_access_token: apiToken } : {}),
+            },
+            body: JSON.stringify({ status: 'resolved' }),
+          }
+        );
+      } catch (e) {
+        // Silently fail — session will still be cleared
+      }
+    },
+
+    // ── Clear ALL Chatwoot session data from storage ──
+    clearAllSession() {
+      // Clear localStorage
+      const lsKeys = Object.keys(localStorage).filter(
+        k =>
+          k.includes('chatwoot') ||
+          k.includes('cw_') ||
+          k.includes('cwc')
+      );
+      lsKeys.forEach(k => localStorage.removeItem(k));
+
+      // Clear sessionStorage
+      const ssKeys = Object.keys(sessionStorage).filter(
+        k =>
+          k.includes('chatwoot') ||
+          k.includes('cw_') ||
+          k.includes('cwc')
+      );
+      ssKeys.forEach(k => sessionStorage.removeItem(k));
+
+      // Clear cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
@@ -117,6 +178,11 @@ export default {
             name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
         }
       });
+    },
+
+    resetSession() {
+      // Keep old method for compatibility — calls full clear
+      this.clearAllSession();
     },
 
     sendCloseMessage() {
@@ -127,13 +193,11 @@ export default {
       }
     },
 
-    // ✕ Close button — hides widget bubble, resets session
     closeWindow() {
       this.resetSession();
       this.sendCloseMessage();
     },
 
-    // Sign-out button — resolves conversation, resets, goes to home screen
     async resolveConversation() {
       try {
         await this.$store.dispatch('conversation/resolveConversation');
@@ -144,13 +208,11 @@ export default {
       await this.$router.replace({ name: 'home' });
     },
 
-    // ✏ New Chat — shows confirmation tooltip first
     requestNewChat() {
       this.showConfirmExitChat = false;
       this.showConfirmNewChat = !this.showConfirmNewChat;
     },
 
-    // ✖ Exit Chat — shows confirmation tooltip first
     requestExitChat() {
       this.showConfirmNewChat = false;
       this.showConfirmExitChat = !this.showConfirmExitChat;
@@ -161,12 +223,27 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ✏ New Chat button — resolves current convo, clears session, fresh home screen
+    // ✏ New Chat — same logic as index.html newChat()
+    // 1. Get conversation ID
+    // 2. Resolve via API
+    // 3. Clear all session storage
+    // 4. Reset SDK
+    // 5. Navigate to home (fresh start)
     async startNewChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
       this.showConfirmNewChat = false;
+
       try {
+        // Step 1: Get current conversation ID
+        const conversationId = this.getConversationId();
+
+        // Step 2: Resolve via API (like index.html does)
+        if (conversationId) {
+          await this.resolveConversationViaApi(conversationId);
+        }
+
+        // Also try via Vuex store dispatch as fallback
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -174,25 +251,46 @@ export default {
             CONVERSATION_STATUS.PENDING,
           ].includes(this.conversationStatus)
         ) {
-          await this.$store.dispatch('conversation/resolveConversation');
+          try {
+            await this.$store.dispatch('conversation/resolveConversation');
+          } catch (e) {
+            // ignore — API call above already handled it
+          }
         }
-        this.resetSession();
+
+        // Step 3: Clear ALL session data (localStorage + sessionStorage + cookies)
+        this.clearAllSession();
+
+        // Step 4: Reset SDK if available (same as index.html)
+        if (
+          window.$chatwoot &&
+          typeof window.$chatwoot.reset === 'function'
+        ) {
+          window.$chatwoot.reset();
+        }
+
+        // Step 5: Navigate to home — fresh conversation will start
         await this.$router.replace({ name: 'home' });
+
       } catch (e) {
-        // fallback — still navigate home even if resolve fails
-        this.resetSession();
+        // Fallback — clear and go home even if something fails
+        this.clearAllSession();
         await this.$router.replace({ name: 'home' });
       } finally {
         this.isEndingChat = false;
       }
     },
 
-    // ✖ End Chat button — resolves + resets + closes widget completely
+    // ✖ End Chat — resolves + resets + closes widget completely
     async endChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
       this.showConfirmExitChat = false;
       try {
+        const conversationId = this.getConversationId();
+        if (conversationId) {
+          await this.resolveConversationViaApi(conversationId);
+        }
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -200,17 +298,22 @@ export default {
             CONVERSATION_STATUS.PENDING,
           ].includes(this.conversationStatus)
         ) {
-          await this.$store.dispatch('conversation/resolveConversation');
+          try {
+            await this.$store.dispatch('conversation/resolveConversation');
+          } catch (e) {
+            // ignore
+          }
         }
-        this.resetSession();
-        // Close the widget bubble
+        this.clearAllSession();
         this.sendCloseMessage();
-        // Also reset via SDK if available (for non-iframe usage)
-        if (window.$chatwoot && typeof window.$chatwoot.reset === 'function') {
+        if (
+          window.$chatwoot &&
+          typeof window.$chatwoot.reset === 'function'
+        ) {
           window.$chatwoot.reset();
         }
       } catch (e) {
-        this.resetSession();
+        this.clearAllSession();
         this.sendCloseMessage();
       } finally {
         this.isEndingChat = false;
@@ -241,7 +344,6 @@ export default {
         title="New Chat"
         @click="requestNewChat"
       >
-        <!-- Compose / new chat icon -->
         <svg
           width="18"
           height="18"
@@ -288,7 +390,6 @@ export default {
         title="Exit & Close Chat"
         @click="requestExitChat"
       >
-        <!-- Door exit icon -->
         <svg
           width="18"
           height="18"
@@ -333,21 +434,6 @@ export default {
       </div>
     </div>
 
-    <!-- Sign-out / Exit button (original Chatwoot) -->
-    <button
-      v-if="
-        canLeaveConversation &&
-        canUserEndConversation &&
-        hasEndConversationEnabled &&
-        showEndConversationButton
-      "
-      class="header-action-btn"
-      :title="$t('END_CONVERSATION')"
-      @click="resolveConversation"
-    >
-      <FluentIcon icon="sign-out" size="20" class="text-n-slate-12" />
-    </button>
-
     <!-- Popout button -->
     <button
       v-if="showPopoutButton"
@@ -374,7 +460,6 @@ export default {
   position: relative;
 }
 
-/* ── Base action button ─────────────────────────────── */
 .header-action-btn {
   display: flex;
   align-items: center;
@@ -408,7 +493,6 @@ export default {
   }
 }
 
-/* ── New Chat button ────────────────────────────────── */
 .new-chat-btn {
   color: var(--color-woot, #1f93ff);
 
@@ -425,7 +509,6 @@ export default {
   }
 }
 
-/* ── Exit Chat button ───────────────────────────────── */
 .exit-chat-btn {
   color: #ef4444;
 
@@ -442,7 +525,6 @@ export default {
   }
 }
 
-/* ── Close button — hide by default, show in RN ────── */
 .close-button {
   display: none;
 }
@@ -450,14 +532,12 @@ export default {
   display: flex !important;
 }
 
-/* ── Header call button ─────────────────────────────── */
 .header-call-btn {
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* ── Confirmation Popover ───────────────────────────── */
 .relative {
   position: relative;
 }
@@ -477,7 +557,6 @@ export default {
   border: 1px solid rgba(0, 0, 0, 0.08);
   animation: popoverIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  /* Arrow */
   &::before {
     content: '';
     position: absolute;
@@ -578,7 +657,6 @@ export default {
   }
 }
 
-/* ── Spinner for loading state ──────────────────────── */
 .spinner {
   display: inline-block;
   width: 13px;
@@ -593,7 +671,6 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-/* ── Dark mode support ──────────────────────────────── */
 .dark {
   .confirm-popover {
     background: #1e293b;
