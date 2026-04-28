@@ -22,7 +22,13 @@ COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/en.json
 # Run vite build to compile the widget JS
 # Run vite build to compile the widget JS
 WORKDIR /app
-RUN NODE_OPTIONS="--max-old-space-size=4096" /app/bin/vite build
+RUN npm install -g pnpm && \
+    cd /app && \
+    pnpm install --frozen-lockfile && \
+    SECRET_KEY_BASE=dummy \
+    RAILS_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=4096" \
+    node_modules/.bin/vite build --config vite.config.ts
 
 # ── Stage 2: Final clean image ─────────────────────────────────────────────────
 FROM chatwoot/chatwoot:latest
