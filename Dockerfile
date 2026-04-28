@@ -22,7 +22,7 @@ COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/en.json
 # Run vite build to compile the widget JS
 # Run vite build to compile the widget JS
 WORKDIR /app
-RUN ls node_modules/.bin/vite || (echo "vite not found, searching..." && find / -name "vite" -type f 2>/dev/null | head -5)
+RUN NODE_OPTIONS="--max-old-space-size=4096" /app/bin/vite build
 
 # ── Stage 2: Final clean image ─────────────────────────────────────────────────
 FROM chatwoot/chatwoot:latest
