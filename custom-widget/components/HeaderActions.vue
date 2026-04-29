@@ -6,13 +6,7 @@ import FluentIcon from 'shared/components/FluentIcon/Index.vue';
 import ElevenLabsVoiceButton from 'widget/components/ElevenLabsVoiceButton.vue';
 import configMixin from 'widget/mixins/configMixin';
 import { CONVERSATION_STATUS } from 'shared/constants/messages';
-
-// ── CONFIG — same as your index.html ──────────────────────────────────────────
-// These are used to resolve the conversation via REST API
-const BASE_URL   = 'https://gratifiedly-untentacled-janella.ngrok-free.dev';
-const ACCOUNT_ID = 7;
-const API_TOKEN  = '8MRk5RAWWMxDZRukCSjT3PVw';
-// ─────────────────────────────────────────────────────────────────────────────
+import { toggleStatus } from 'widget/api/conversation';
 
 export default {
   name: 'HeaderActions',
@@ -43,13 +37,6 @@ export default {
     }),
     conversationStatus() {
       return this.conversationAttributes.status;
-    },
-    canLeaveConversation() {
-      return [
-        CONVERSATION_STATUS.OPEN,
-        CONVERSATION_STATUS.SNOOZED,
-        CONVERSATION_STATUS.PENDING,
-      ].includes(this.conversationStatus);
     },
     isIframe() {
       return IFrameHelper.isIFrame();
@@ -85,68 +72,23 @@ export default {
       popoutChatWindow(origin, websiteToken, this.$root.$i18n.locale, authToken);
     },
 
-    // ── Get conversation ID — scans all storage like index.html ──
-    getConversationId() {
-      const keys = [
-        'chatwoot_conversation_id',
-        'cw_conversation_id',
-        'cwc-conversation-id',
-      ];
-      for (const key of keys) {
-        const val = localStorage.getItem(key) || sessionStorage.getItem(key);
-        if (val) return val;
-      }
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.toLowerCase().includes('conversation')) {
-          return localStorage.getItem(key);
-        }
-      }
-      return null;
-    },
-
-    // ── Resolve via REST API — exact same as index.html resolveConversation() ──
-    async resolveConversationViaApi(conversationId) {
-      if (!conversationId) return;
-      try {
-        const res = await fetch(
-          `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'api_access_token': API_TOKEN,
-            },
-            body: JSON.stringify({ status: 'resolved' }),
-          }
-        );
-        if (!res.ok) {
-          console.warn('⚠️ Could not resolve conversation:', res.status);
-        }
-      } catch (e) {
-        console.warn('⚠️ Resolve API error:', e);
-      }
-    },
-
-    // ── Clear ALL Chatwoot session data — exact same as index.html clearSession() ──
+    // ── Clear ALL Chatwoot keys from storage ──
     clearAllSession() {
-      // Clear localStorage
       const lsKeys = Object.keys(localStorage).filter(
         k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
       );
       lsKeys.forEach(k => localStorage.removeItem(k));
 
-      // Clear sessionStorage
       const ssKeys = Object.keys(sessionStorage).filter(
         k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
       );
       ssKeys.forEach(k => sessionStorage.removeItem(k));
 
-      // Clear cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
-          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+          document.cookie =
+            name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
         }
       });
     },
@@ -159,10 +101,6 @@ export default {
       }
     },
 
-    closeWindow() {
-      this.sendCloseMessage();
-    },
-
     requestExitChat() {
       this.showConfirmExitChat = !this.showConfirmExitChat;
     },
@@ -171,76 +109,64 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ✖ Exit Chat — exact same logic as index.html exitChat()
-    // Step 1: resolve via API
-    // Step 2: clear ALL session storage
-    // Step 3: hide + reset SDK
-    // Step 4: remove widget iframe + bubble from DOM
-    // Step 5: send close message to parent
-    // Step 6: reload parent page after 500ms
-    //         → next bubble click = fresh pre-chat form ✅
+    // ── PERFECT EXIT FLOW ──────────────────────────────────────────────────
+    // Root cause from Home.vue:
+    //   if (preChatFormEnabled && !conversationSize) → pre-chat form  ✅
+    //   else → messages (old chat)  ❌
+    //
+    // So the fix is:
+    //   1. Resolve conversation via toggleStatus API
+    //   2. commit('conversation/clearConversations')
+    //      → sets conversations = {} → conversationSize becomes 0
+    //   3. Clear all localStorage/sessionStorage
+    //   4. Navigate to 'home'
+    //      → Home.vue sees conversationSize = 0
+    //      → routes to 'prechat-form' automatically ✅
+    //   5. Close widget
+    // ─────────────────────────────────────────────────────────────────────
     async endChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
       this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Resolve via REST API (hardcoded like index.html)
-        const conversationId = this.getConversationId();
-        if (conversationId) {
-          await this.resolveConversationViaApi(conversationId);
+        // Step 1: Resolve conversation via Chatwoot internal API
+        if (
+          [
+            CONVERSATION_STATUS.OPEN,
+            CONVERSATION_STATUS.SNOOZED,
+            CONVERSATION_STATUS.PENDING,
+          ].includes(this.conversationStatus)
+        ) {
+          try {
+            await toggleStatus();
+          } catch (e) {
+            // ignore — may already be resolved
+          }
         }
 
-        // Step 2: Also resolve via Vuex as backup
-        try {
-          await this.$store.dispatch('conversation/resolveConversation');
-        } catch (e) {}
+        // Step 2: Clear Vuex store — THIS makes conversationSize = 0
+        // Home.vue checks conversationSize to decide pre-chat vs messages
+        // clearConversations sets conversations = {} so size becomes 0
+        this.$store.commit('conversation/clearConversations');
 
-        // Step 3: Clear ALL session data
+        // Step 3: Clear all storage so widget has no session next open
         this.clearAllSession();
 
-        // Step 4: Hide + Reset Chatwoot SDK
-        if (window.$chatwoot) {
-          if (typeof window.$chatwoot.hide === 'function') {
-            window.$chatwoot.hide();
-          }
-          if (typeof window.$chatwoot.reset === 'function') {
-            window.$chatwoot.reset();
-          }
-        }
+        // Step 4: Navigate to home
+        // Home.vue will now see conversationSize = 0
+        // and route to 'prechat-form' instead of 'messages' ✅
+        await this.$router.replace({ name: 'home' });
 
-        // Step 5: Remove widget iframe + bubble from DOM
-        const holder = document.querySelector('.woot-widget-holder');
-        if (holder) holder.remove();
-        const bubble = document.querySelector('.woot--bubble-holder');
-        if (bubble) bubble.remove();
-
-        // Step 6: Send close to parent iframe
+        // Step 5: Close the widget
         this.sendCloseMessage();
-
-        // Step 7: Reload the parent page after 500ms
-        // This is THE KEY — same as index.html — forces full fresh start
-        // Next bubble click will show pre-chat form, not old chat
-        setTimeout(() => {
-          if (window.parent && window.parent !== window) {
-            // inside iframe — reload parent page
-            window.parent.location.reload();
-          } else {
-            // standalone — reload current page
-            window.location.reload();
-          }
-        }, 500);
 
       } catch (e) {
+        // Fallback
+        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
         this.clearAllSession();
+        try { await this.$router.replace({ name: 'home' }); } catch (_) {}
         this.sendCloseMessage();
-        setTimeout(() => {
-          if (window.parent && window.parent !== window) {
-            window.parent.location.reload();
-          } else {
-            window.location.reload();
-          }
-        }, 500);
       } finally {
         this.isEndingChat = false;
       }
@@ -270,7 +196,6 @@ export default {
         title="Exit & Close Chat"
         @click="requestExitChat"
       >
-        <!-- Door exit icon -->
         <svg
           width="18"
           height="18"
@@ -340,7 +265,7 @@ export default {
     <button
       class="header-action-btn close-button"
       :class="{ 'rn-close-button': isRNWebView }"
-      @click="closeWindow"
+      @click="sendCloseMessage"
     >
       <FluentIcon icon="dismiss" size="22" class="text-n-slate-12" />
     </button>
@@ -371,44 +296,20 @@ export default {
     background: rgba(0, 0, 0, 0.07);
     transform: scale(1.05);
   }
-
-  &:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  &.active {
-    background: rgba(0, 0, 0, 0.1);
-  }
+  &:active:not(:disabled) { transform: scale(0.95); }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+  &.active { background: rgba(0, 0, 0, 0.1); }
 }
 
 .exit-chat-btn {
   color: #ef4444;
-
-  &:hover:not(:disabled) {
-    background: rgba(239, 68, 68, 0.1);
-  }
-
-  &.active {
-    background: rgba(239, 68, 68, 0.12);
-  }
-
-  svg path {
-    stroke: currentColor;
-  }
+  &:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); }
+  &.active { background: rgba(239, 68, 68, 0.12); }
+  svg path { stroke: currentColor; }
 }
 
-.close-button {
-  display: none;
-}
-
-.rn-close-button {
-  display: flex !important;
-}
+.close-button { display: none; }
+.rn-close-button { display: flex !important; }
 
 .header-call-btn {
   display: flex;
@@ -416,9 +317,7 @@ export default {
   justify-content: center;
 }
 
-.relative {
-  position: relative;
-}
+.relative { position: relative; }
 
 .confirm-popover {
   position: absolute;
@@ -452,7 +351,7 @@ export default {
 
 @keyframes popoverIn {
   from { opacity: 0; transform: translateY(-6px) scale(0.96); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .confirm-text {
@@ -486,7 +385,6 @@ export default {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, transform 0.1s ease;
-
   &:active { transform: scale(0.97); }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
@@ -520,18 +418,13 @@ export default {
   animation: spin 0.7s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .dark {
   .confirm-popover {
     background: #1e293b;
     border-color: rgba(255, 255, 255, 0.1);
-    &::before {
-      background: #1e293b;
-      border-color: rgba(255, 255, 255, 0.1);
-    }
+    &::before { background: #1e293b; border-color: rgba(255, 255, 255, 0.1); }
   }
   .confirm-text { color: #f1f5f9; }
   .confirm-sub  { color: #94a3b8; }
