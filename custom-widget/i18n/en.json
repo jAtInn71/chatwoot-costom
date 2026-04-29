@@ -57,9 +57,9 @@
   "BUBBLE": {
     "LABEL": "Chat with us"
   },
-  "POWERED_BY": "Powered by Chatwoot",
-  "EMAIL_PLACEHOLDER": "Please enter your email",
-  "CHAT_PLACEHOLDER": "Type your message",
+  "POWERED_BY": "Powered by Printdeed",
+  "EMAIL_PLACEHOLDER": "Email",
+  "CHAT_PLACEHOLDER": "chat with us ...",
   "TODAY": "Today",
   "YESTERDAY": "Yesterday",
   "PRE_CHAT_FORM": {
