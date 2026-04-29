@@ -7,6 +7,13 @@ import ElevenLabsVoiceButton from 'widget/components/ElevenLabsVoiceButton.vue';
 import configMixin from 'widget/mixins/configMixin';
 import { CONVERSATION_STATUS } from 'shared/constants/messages';
 
+// ── CONFIG — same as your index.html ──────────────────────────────────────────
+// These are used to resolve the conversation via REST API
+const BASE_URL   = 'https://gratifiedly-untentacled-janella.ngrok-free.dev';
+const ACCOUNT_ID = 7;
+const API_TOKEN  = '8MRk5RAWWMxDZRukCSjT3PVw';
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default {
   name: 'HeaderActions',
   components: { FluentIcon, ElevenLabsVoiceButton },
@@ -78,7 +85,7 @@ export default {
       popoutChatWindow(origin, websiteToken, this.$root.$i18n.locale, authToken);
     },
 
-    // ── Get conversation ID from all storage locations ──
+    // ── Get conversation ID — scans all storage like index.html ──
     getConversationId() {
       const keys = [
         'chatwoot_conversation_id',
@@ -98,61 +105,50 @@ export default {
       return null;
     },
 
-    // ── Resolve conversation via REST API ──
+    // ── Resolve via REST API — exact same as index.html resolveConversation() ──
     async resolveConversationViaApi(conversationId) {
       if (!conversationId) return;
       try {
-        const baseUrl =
-          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig?.baseUrl ||
-          window.location.origin;
-        const accountId =
-          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig?.accountId ||
-          window.chatwootWebChannel?.accountId;
-        const apiToken =
-          window.chatwootBus?.$root?.$store?.state?.appConfig?.channelConfig?.hmacToken ||
-          window.chatwootWebChannel?.hmacToken;
-
-        if (!accountId) return;
-
-        await fetch(
-          `${baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/toggle_status`,
+        const res = await fetch(
+          `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              ...(apiToken ? { api_access_token: apiToken } : {}),
+              'api_access_token': API_TOKEN,
             },
             body: JSON.stringify({ status: 'resolved' }),
           }
         );
+        if (!res.ok) {
+          console.warn('⚠️ Could not resolve conversation:', res.status);
+        }
       } catch (e) {
-        // silently fail
+        console.warn('⚠️ Resolve API error:', e);
       }
     },
 
-    // ── Clear ALL Chatwoot data from storage ──
-    // This ensures next widget open starts fresh with pre-chat form
+    // ── Clear ALL Chatwoot session data — exact same as index.html clearSession() ──
     clearAllSession() {
+      // Clear localStorage
       const lsKeys = Object.keys(localStorage).filter(
         k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
       );
       lsKeys.forEach(k => localStorage.removeItem(k));
 
+      // Clear sessionStorage
       const ssKeys = Object.keys(sessionStorage).filter(
         k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
       );
       ssKeys.forEach(k => sessionStorage.removeItem(k));
 
+      // Clear cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
           document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
         }
       });
-    },
-
-    resetSession() {
-      this.clearAllSession();
     },
 
     sendCloseMessage() {
@@ -164,7 +160,6 @@ export default {
     },
 
     closeWindow() {
-      this.resetSession();
       this.sendCloseMessage();
     },
 
@@ -176,62 +171,76 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ✖ Exit Chat:
-    // Resolves conversation → clears ALL storage → closes widget
-    // Next time user clicks widget bubble = fresh pre-chat form
+    // ✖ Exit Chat — exact same logic as index.html exitChat()
+    // Step 1: resolve via API
+    // Step 2: clear ALL session storage
+    // Step 3: hide + reset SDK
+    // Step 4: remove widget iframe + bubble from DOM
+    // Step 5: send close message to parent
+    // Step 6: reload parent page after 500ms
+    //         → next bubble click = fresh pre-chat form ✅
     async endChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
       this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Resolve via REST API
+        // Step 1: Resolve via REST API (hardcoded like index.html)
         const conversationId = this.getConversationId();
         if (conversationId) {
           await this.resolveConversationViaApi(conversationId);
         }
 
-        // Step 2: Resolve via Vuex store
-        if (
-          [
-            CONVERSATION_STATUS.OPEN,
-            CONVERSATION_STATUS.SNOOZED,
-            CONVERSATION_STATUS.PENDING,
-          ].includes(this.conversationStatus)
-        ) {
-          try {
-            await this.$store.dispatch('conversation/resolveConversation');
-          } catch (e) {}
-        }
+        // Step 2: Also resolve via Vuex as backup
+        try {
+          await this.$store.dispatch('conversation/resolveConversation');
+        } catch (e) {}
 
-        // Step 3: Clear ALL session data from storage
-        // This is the KEY step — next widget open finds no session
-        // so it shows pre-chat form / "Start Conversation" fresh
+        // Step 3: Clear ALL session data
         this.clearAllSession();
 
-        // Step 4: Reset Chatwoot SDK
+        // Step 4: Hide + Reset Chatwoot SDK
         if (window.$chatwoot) {
-          if (typeof window.$chatwoot.reset === 'function') {
-            window.$chatwoot.reset();
-          }
           if (typeof window.$chatwoot.hide === 'function') {
             window.$chatwoot.hide();
+          }
+          if (typeof window.$chatwoot.reset === 'function') {
+            window.$chatwoot.reset();
           }
         }
 
         // Step 5: Remove widget iframe + bubble from DOM
-        // Forces full reinitialization next time widget is opened
-        const widgetHolder = document.querySelector('.woot-widget-holder');
-        if (widgetHolder) widgetHolder.remove();
-        const widgetBubble = document.querySelector('.woot--bubble-holder');
-        if (widgetBubble) widgetBubble.remove();
+        const holder = document.querySelector('.woot-widget-holder');
+        if (holder) holder.remove();
+        const bubble = document.querySelector('.woot--bubble-holder');
+        if (bubble) bubble.remove();
 
-        // Step 6: Close widget
+        // Step 6: Send close to parent iframe
         this.sendCloseMessage();
+
+        // Step 7: Reload the parent page after 500ms
+        // This is THE KEY — same as index.html — forces full fresh start
+        // Next bubble click will show pre-chat form, not old chat
+        setTimeout(() => {
+          if (window.parent && window.parent !== window) {
+            // inside iframe — reload parent page
+            window.parent.location.reload();
+          } else {
+            // standalone — reload current page
+            window.location.reload();
+          }
+        }, 500);
 
       } catch (e) {
         this.clearAllSession();
         this.sendCloseMessage();
+        setTimeout(() => {
+          if (window.parent && window.parent !== window) {
+            window.parent.location.reload();
+          } else {
+            window.location.reload();
+          }
+        }, 500);
       } finally {
         this.isEndingChat = false;
       }
@@ -261,6 +270,7 @@ export default {
         title="Exit & Close Chat"
         @click="requestExitChat"
       >
+        <!-- Door exit icon -->
         <svg
           width="18"
           height="18"
