@@ -81,27 +81,25 @@ export default {
       return this.preChatFormEnabled ? this.options.preChatFields : [];
     },
     filteredPreChatFields() {
-      const isUserEmailAvailable = this.currentUser.has_email;
-      const isUserPhoneNumberAvailable = this.currentUser.has_phone_number;
-      const isUserIdentifierAvailable = !!this.currentUser.identifier;
-
-      const isUserNameAvailable = !!(
-        isUserIdentifierAvailable ||
-        isUserEmailAvailable ||
-        isUserPhoneNumberAvailable
-      );
-      return this.preChatFields.filter(field => {
-        if (isUserEmailAvailable && field.name === 'emailAddress') {
-          return false;
-        }
-        if (isUserPhoneNumberAvailable && field.name === 'phoneNumber') {
-          return false;
-        }
-        if (isUserNameAvailable && field.name === 'fullName') {
-          return false;
-        }
-        return true;
-      });
+      // ── CHANGED ──────────────────────────────────────────────────────────
+      // Original code hid fullName / emailAddress / phoneNumber fields when
+      // currentUser.has_email / has_phone_number / identifier were set.
+      // This caused the old contact name to persist because:
+      //   1. User fills form as "Nayan", starts chat
+      //   2. User exits chat (endChat clears conversations but Vuex contact
+      //      state was NOT fully cleared in the old code)
+      //   3. User opens widget again → filteredPreChatFields hides fullName
+      //      because currentUser.has_email was still true from old session
+      //   4. Form submits without a new name → webhook gets stale name
+      //
+      // Fix: Always show all enabled fields regardless of currentUser state.
+      // endChat() in HeaderActions now calls contacts/clearCurrentUser which
+      // resets has_email / has_phone_number / identifier to false/null,
+      // but we also remove the hiding logic here as a safety net so that
+      // even if clearCurrentUser is not called for any reason, the form
+      // will still show all fields to the user.
+      // ─────────────────────────────────────────────────────────────────────
+      return this.preChatFields;
     },
     enabledPreChatFields() {
       return this.filteredPreChatFields
