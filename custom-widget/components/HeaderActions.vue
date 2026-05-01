@@ -72,34 +72,43 @@ export default {
       popoutChatWindow(origin, websiteToken, this.$root.$i18n.locale, authToken);
     },
 
-    // ── DEEP CLEAR: wipe ALL storage + cookies + window globals ──────────
-    // Chatwoot re-identifies old contact via cwc-unique-id stored in localStorage.
-    // We must wipe it ALL so the server sees a brand new anonymous visitor.
+    // ── NUCLEAR STORAGE CLEAR ────────────────────────────────────────────
+    // Wipes every key that could let Chatwoot re-identify the old contact.
+    // The KEY one is 'cwc-unique-id' — this is what Chatwoot uses to match
+    // a returning visitor to an existing contact on the server.
     clearAllSession() {
-      // 1. localStorage — wipe everything chatwoot-related
-      Object.keys(localStorage)
-        .filter(k =>
+      // localStorage — wipe ALL chatwoot-related keys
+      const lsKeys = Object.keys(localStorage);
+      lsKeys.forEach(k => {
+        if (
           k.includes('chatwoot') ||
           k.includes('cw_') ||
           k.includes('cwc') ||
           k.includes('user_unique_id') ||
           k.includes('contact') ||
-          k.includes('conversation')
-        )
-        .forEach(k => localStorage.removeItem(k));
+          k.includes('conversation') ||
+          k.includes('auth_token') ||
+          k.includes('widget')
+        ) {
+          localStorage.removeItem(k);
+        }
+      });
 
-      // 2. sessionStorage — same
-      Object.keys(sessionStorage)
-        .filter(k =>
+      // sessionStorage — same
+      const ssKeys = Object.keys(sessionStorage);
+      ssKeys.forEach(k => {
+        if (
           k.includes('chatwoot') ||
           k.includes('cw_') ||
           k.includes('cwc') ||
           k.includes('contact') ||
           k.includes('conversation')
-        )
-        .forEach(k => sessionStorage.removeItem(k));
+        ) {
+          sessionStorage.removeItem(k);
+        }
+      });
 
-      // 3. Cookies
+      // Cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
@@ -108,28 +117,19 @@ export default {
         }
       });
 
-      // 4. Window globals — Chatwoot sets these for identity
+      // Window globals
       try { delete window.chatwootContactIdentity; } catch (_) {}
       try { delete window.chatwootConversationId; } catch (_) {}
       try { delete window.authToken; } catch (_) {}
     },
 
-    // ── FULL VUEX RESET ──────────────────────────────────────────────────
-    // Root cause: Vuex still holds old contact name/email in memory.
-    // Home.vue reads conversationSize from Vuex → if > 0, skips pre-chat form.
-    // We must clear ALL contact + conversation + auth state from Vuex.
+    // ── VUEX FULL RESET ──────────────────────────────────────────────────
     resetVuexStore() {
       const s = this.$store;
-
-      // Clear conversations → conversationSize = 0 → Home.vue shows pre-chat form ✅
       try { s.commit('conversation/clearConversations'); } catch (_) {}
-
-      // Clear contact identity (name, email, phone stored in Vuex)
       try { s.commit('contacts/clearContact'); } catch (_) {}
       try { s.commit('contacts/SET_CONTACT', {}); } catch (_) {}
       try { s.commit('contact/setContact', {}); } catch (_) {}
-
-      // Clear conversation attributes (status, id, sender info in header)
       try {
         s.commit('conversationAttributes/setConversationParams', {
           status: null,
@@ -137,12 +137,8 @@ export default {
           meta: {},
         });
       } catch (_) {}
-
-      // Clear auth token → widget re-authenticates as new visitor
       try { s.commit('auth/setAuthToken', null); } catch (_) {}
       try { s.commit('auth/clearAuth'); } catch (_) {}
-
-      // Catch-all global reset if the store exposes one
       try { s.dispatch('resetState'); } catch (_) {}
     },
 
@@ -154,12 +150,20 @@ export default {
       }
     },
 
-    // Tell the PARENT PAGE to call window.$chatwoot.reset()
-    // This clears the SDK session on the host page so server won't
-    // re-send the old contact token on next widget open
+    // ── THE ACTUAL FIX ───────────────────────────────────────────────────
+    // After clearing storage + Vuex, we tell the PARENT PAGE to:
+    //   1. Call window.$chatwoot.reset() — destroys the SDK session token
+    //   2. This forces Chatwoot to create a brand new anonymous contact
+    //      on the next widget open → pre-chat form appears fresh ✅
+    //
+    // We also reload the iframe itself as a fallback (window.location.reload)
+    // so Vue router state is completely fresh with no old contact in memory.
     sendResetToParent() {
       if (IFrameHelper.isIFrame()) {
+        // Primary: tell parent to call $chatwoot.reset()
         IFrameHelper.sendMessage({ event: 'resetSession' });
+        // Also tell parent to close + reopen widget cleanly
+        IFrameHelper.sendMessage({ event: 'chatwootReset' });
       }
     },
 
@@ -171,23 +175,21 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ── FULL EXIT FLOW ───────────────────────────────────────────────────
+    // ── FULL EXIT + FRESH START ──────────────────────────────────────────
     //
-    // WHY old name/email reappeared:
-    //   1. Vuex store still held contact data in memory
-    //   2. clearAllSession() only cleared storage but NOT Vuex
-    //   3. Parent page $chatwoot SDK still had the session token
-    //      → on next open, it re-sent the old contact ID to the server
-    //      → server returned "haya / jaha@ganas.com" again
-    //      → pre-chat form was skipped because contact was already identified
+    // WHY OLD NAME STILL APPEARS:
+    //   The widget iframe keeps the Vue app alive in memory between opens.
+    //   Even after clearing localStorage, the Chatwoot SDK on the PARENT PAGE
+    //   still holds a session token (cwc-unique-id) that it passes to the
+    //   server → server responds with old contact (Jatin/Haya) → skip pre-chat.
     //
-    // Fix:
-    //   1. Resolve conversation on server (toggleStatus)
-    //   2. resetVuexStore() → clears contact + conversations in memory
-    //   3. clearAllSession() → wipes localStorage / cookies / window globals
-    //   4. sendResetToParent() → tells host page to reset $chatwoot SDK
-    //   5. Navigate to home → conversationSize = 0 → pre-chat form shows ✅
-    //   6. Close widget
+    //   The ONLY complete fix is:
+    //     a) Clear storage inside the iframe (clearAllSession)
+    //     b) Reset Vuex in the iframe (resetVuexStore)
+    //     c) Tell parent to call $chatwoot.reset() (destroys SDK session token)
+    //     d) Reload the iframe so Vue app boots fresh (window.location.reload)
+    //
+    //   Step (d) is the key one that was missing before.
     // ────────────────────────────────────────────────────────────────────
     async endChat() {
       if (this.isEndingChat) return;
@@ -195,7 +197,7 @@ export default {
       this.showConfirmExitChat = false;
 
       try {
-        // 1. Resolve on server
+        // 1. Resolve conversation on Chatwoot server
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -206,28 +208,35 @@ export default {
           try { await toggleStatus(); } catch (_) {}
         }
 
-        // 2. Reset Vuex FIRST (before navigation)
+        // 2. Reset Vuex store (clears contact + conversations from memory)
         this.resetVuexStore();
 
-        // 3. Clear all storage + window globals
+        // 3. Wipe all storage (localStorage, sessionStorage, cookies, globals)
         this.clearAllSession();
 
-        // 4. Tell parent page to reset SDK session
+        // 4. Tell parent page to reset $chatwoot SDK session
+        //    → This is what finally kills the old contact token
         this.sendResetToParent();
 
-        // 5. Navigate to home — pre-chat form will now appear ✅
-        await this.$router.replace({ name: 'home' });
+        // 5. Short delay to let parent process the reset message
+        await new Promise(r => setTimeout(r, 300));
 
-        // 6. Close widget
+        // 6. Close the widget on parent page
         this.sendCloseMessage();
 
+        // 7. Reload the iframe — Vue app boots completely fresh
+        //    Next open: no session → Chatwoot creates new anonymous visitor
+        //    → pre-chat form shows with empty name/email fields ✅
+        window.location.reload();
+
       } catch (e) {
-        // Fallback — always clean up even if something throws
+        // Fallback — always clean up
         try { this.resetVuexStore(); } catch (_) {}
         this.clearAllSession();
         this.sendResetToParent();
-        try { await this.$router.replace({ name: 'home' }); } catch (_) {}
+        await new Promise(r => setTimeout(r, 200));
         this.sendCloseMessage();
+        window.location.reload();
       } finally {
         this.isEndingChat = false;
       }
