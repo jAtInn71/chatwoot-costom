@@ -13,14 +13,8 @@ export default {
   components: { FluentIcon, ElevenLabsVoiceButton },
   mixins: [configMixin],
   props: {
-    showPopoutButton: {
-      type: Boolean,
-      default: false,
-    },
-    showEndConversationButton: {
-      type: Boolean,
-      default: true,
-    },
+    showPopoutButton: { type: Boolean, default: false },
+    showEndConversationButton: { type: Boolean, default: true },
   },
   data() {
     return {
@@ -38,12 +32,8 @@ export default {
     conversationStatus() {
       return this.conversationAttributes.status;
     },
-    isIframe() {
-      return IFrameHelper.isIFrame();
-    },
-    isRNWebView() {
-      return RNHelper.isRNWebView();
-    },
+    isIframe() { return IFrameHelper.isIFrame(); },
+    isRNWebView() { return RNHelper.isRNWebView(); },
     showHeaderActions() {
       return this.isIframe || this.isRNWebView || this.hasWidgetOptions;
     },
@@ -57,89 +47,56 @@ export default {
         CONVERSATION_STATUS.PENDING,
       ].includes(this.conversationStatus);
     },
-    showCallButton() {
-      return this.elevenLabsEnabled;
-    },
+    showCallButton() { return this.elevenLabsEnabled; },
   },
   methods: {
     popoutWindow() {
       this.sendCloseMessage();
-      const {
-        location: { origin },
-        chatwootWebChannel: { websiteToken },
-        authToken,
-      } = window;
+      const { location: { origin }, chatwootWebChannel: { websiteToken }, authToken } = window;
       popoutChatWindow(origin, websiteToken, this.$root.$i18n.locale, authToken);
     },
 
-    // ── NUCLEAR STORAGE CLEAR ────────────────────────────────────────────
-    // Wipes every key that could let Chatwoot re-identify the old contact.
-    // The KEY one is 'cwc-unique-id' — this is what Chatwoot uses to match
-    // a returning visitor to an existing contact on the server.
-    clearAllSession() {
-      // localStorage — wipe ALL chatwoot-related keys
-      const lsKeys = Object.keys(localStorage);
-      lsKeys.forEach(k => {
-        if (
-          k.includes('chatwoot') ||
-          k.includes('cw_') ||
-          k.includes('cwc') ||
-          k.includes('user_unique_id') ||
-          k.includes('contact') ||
-          k.includes('conversation') ||
-          k.includes('auth_token') ||
-          k.includes('widget')
-        ) {
-          localStorage.removeItem(k);
-        }
+    // Clear ONLY the identity keys — NOT all storage
+    // Clearing too much (like 'widget') breaks message sending on next open
+    clearIdentityKeys() {
+      const IDENTITY_KEYS = [
+        'cwc-unique-id',
+        'cw_contact_uuid',
+        'cw_conversation_id',
+        'chatwoot_contact_id',
+        'chatwoot_conversation_id',
+        'chatwootContactIdentity',
+        'cwc-session',
+      ];
+      IDENTITY_KEYS.forEach(k => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
       });
-
-      // sessionStorage — same
-      const ssKeys = Object.keys(sessionStorage);
-      ssKeys.forEach(k => {
-        if (
-          k.includes('chatwoot') ||
-          k.includes('cw_') ||
-          k.includes('cwc') ||
-          k.includes('contact') ||
-          k.includes('conversation')
-        ) {
-          sessionStorage.removeItem(k);
-        }
-      });
-
-      // Cookies
+      // Clear cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
-          document.cookie =
-            name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+          document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
         }
       });
-
-      // Window globals
+      // Clear window globals
       try { delete window.chatwootContactIdentity; } catch (_) {}
       try { delete window.chatwootConversationId; } catch (_) {}
       try { delete window.authToken; } catch (_) {}
     },
 
-    // ── VUEX FULL RESET ──────────────────────────────────────────────────
+    // Reset only conversation + contact Vuex state
+    // Do NOT reset auth or appConfig — those are needed for widget to keep working
     resetVuexStore() {
       const s = this.$store;
       try { s.commit('conversation/clearConversations'); } catch (_) {}
       try { s.commit('contacts/clearContact'); } catch (_) {}
       try { s.commit('contacts/SET_CONTACT', {}); } catch (_) {}
-      try { s.commit('contact/setContact', {}); } catch (_) {}
       try {
         s.commit('conversationAttributes/setConversationParams', {
-          status: null,
-          id: null,
-          meta: {},
+          status: null, id: null, meta: {},
         });
       } catch (_) {}
-      try { s.commit('auth/setAuthToken', null); } catch (_) {}
-      try { s.commit('auth/clearAuth'); } catch (_) {}
-      try { s.dispatch('resetState'); } catch (_) {}
     },
 
     sendCloseMessage() {
@@ -150,20 +107,11 @@ export default {
       }
     },
 
-    // ── THE ACTUAL FIX ───────────────────────────────────────────────────
-    // After clearing storage + Vuex, we tell the PARENT PAGE to:
-    //   1. Call window.$chatwoot.reset() — destroys the SDK session token
-    //   2. This forces Chatwoot to create a brand new anonymous contact
-    //      on the next widget open → pre-chat form appears fresh ✅
-    //
-    // We also reload the iframe itself as a fallback (window.location.reload)
-    // so Vue router state is completely fresh with no old contact in memory.
+    // Tell parent page to call $chatwoot.reset()
+    // This clears the SDK session token on the host page
     sendResetToParent() {
       if (IFrameHelper.isIFrame()) {
-        // Primary: tell parent to call $chatwoot.reset()
         IFrameHelper.sendMessage({ event: 'resetSession' });
-        // Also tell parent to close + reopen widget cleanly
-        IFrameHelper.sendMessage({ event: 'chatwootReset' });
       }
     },
 
@@ -175,21 +123,16 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ── FULL EXIT + FRESH START ──────────────────────────────────────────
+    // ── EXIT CHAT — NO RELOAD ────────────────────────────────────────────
+    // Previous version used window.location.reload() which caused:
+    //   → Widget full restart = 6+ API calls every time
+    //   → Hit ngrok 40 req/min limit → 429 → messages stop sending
     //
-    // WHY OLD NAME STILL APPEARS:
-    //   The widget iframe keeps the Vue app alive in memory between opens.
-    //   Even after clearing localStorage, the Chatwoot SDK on the PARENT PAGE
-    //   still holds a session token (cwc-unique-id) that it passes to the
-    //   server → server responds with old contact (Jatin/Haya) → skip pre-chat.
-    //
-    //   The ONLY complete fix is:
-    //     a) Clear storage inside the iframe (clearAllSession)
-    //     b) Reset Vuex in the iframe (resetVuexStore)
-    //     c) Tell parent to call $chatwoot.reset() (destroys SDK session token)
-    //     d) Reload the iframe so Vue app boots fresh (window.location.reload)
-    //
-    //   Step (d) is the key one that was missing before.
+    // Fix: use Vue router to navigate to 'home' instead of reloading.
+    //   → Zero extra API calls
+    //   → Vuex is cleared so conversationSize = 0
+    //   → Home.vue sees no conversation → shows pre-chat form ✅
+    //   → Parent SDK reset clears the contact token on host page ✅
     // ────────────────────────────────────────────────────────────────────
     async endChat() {
       if (this.isEndingChat) return;
@@ -197,46 +140,39 @@ export default {
       this.showConfirmExitChat = false;
 
       try {
-        // 1. Resolve conversation on Chatwoot server
-        if (
-          [
-            CONVERSATION_STATUS.OPEN,
-            CONVERSATION_STATUS.SNOOZED,
-            CONVERSATION_STATUS.PENDING,
-          ].includes(this.conversationStatus)
-        ) {
+        // 1. Resolve conversation on server (1 API call only)
+        if ([
+          CONVERSATION_STATUS.OPEN,
+          CONVERSATION_STATUS.SNOOZED,
+          CONVERSATION_STATUS.PENDING,
+        ].includes(this.conversationStatus)) {
           try { await toggleStatus(); } catch (_) {}
         }
 
-        // 2. Reset Vuex store (clears contact + conversations from memory)
+        // 2. Clear only identity keys from storage
+        //    (NOT all keys — clearing widget/config keys breaks message sending)
+        this.clearIdentityKeys();
+
+        // 3. Reset conversation + contact from Vuex memory
         this.resetVuexStore();
 
-        // 3. Wipe all storage (localStorage, sessionStorage, cookies, globals)
-        this.clearAllSession();
-
-        // 4. Tell parent page to reset $chatwoot SDK session
-        //    → This is what finally kills the old contact token
+        // 4. Tell parent to reset SDK session token (no API call — just postMessage)
         this.sendResetToParent();
 
-        // 5. Short delay to let parent process the reset message
-        await new Promise(r => setTimeout(r, 300));
+        // 5. Navigate to home via Vue router — NO reload, zero extra API calls
+        //    Home.vue checks conversationSize → 0 → shows pre-chat form ✅
+        await this.$router.replace({ name: 'home' });
 
-        // 6. Close the widget on parent page
+        // 6. Close widget
         this.sendCloseMessage();
-
-        // 7. Reload the iframe — Vue app boots completely fresh
-        //    Next open: no session → Chatwoot creates new anonymous visitor
-        //    → pre-chat form shows with empty name/email fields ✅
-        window.location.reload();
 
       } catch (e) {
-        // Fallback — always clean up
-        try { this.resetVuexStore(); } catch (_) {}
-        this.clearAllSession();
+        // Fallback
+        this.clearIdentityKeys();
+        this.resetVuexStore();
         this.sendResetToParent();
-        await new Promise(r => setTimeout(r, 200));
+        try { await this.$router.replace({ name: 'home' }); } catch (_) {}
         this.sendCloseMessage();
-        window.location.reload();
       } finally {
         this.isEndingChat = false;
       }
@@ -266,34 +202,10 @@ export default {
         title="Exit & Close Chat"
         @click="requestExitChat"
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M16 17L21 12L16 7"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M21 12H9"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16 17L21 12L16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
 
@@ -307,9 +219,7 @@ export default {
           </span>
         </p>
         <div class="confirm-actions">
-          <button class="confirm-btn confirm-cancel" @click="dismissConfirms">
-            Cancel
-          </button>
+          <button class="confirm-btn confirm-cancel" @click="dismissConfirms">Cancel</button>
           <button
             class="confirm-btn confirm-ok confirm-ok--exit"
             :disabled="isEndingChat"
@@ -344,9 +254,7 @@ export default {
 </template>
 
 <style scoped lang="scss">
-.actions {
-  position: relative;
-}
+.actions { position: relative; }
 
 .header-action-btn {
   display: flex;
@@ -359,34 +267,25 @@ export default {
   background: transparent;
   color: var(--color-body);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease;
   padding: 0;
 
-  &:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.07);
-    transform: scale(1.05);
-  }
+  &:hover:not(:disabled) { background: rgba(0,0,0,0.07); transform: scale(1.05); }
   &:active:not(:disabled) { transform: scale(0.95); }
   &:disabled { opacity: 0.4; cursor: not-allowed; }
-  &.active { background: rgba(0, 0, 0, 0.1); }
+  &.active { background: rgba(0,0,0,0.1); }
 }
 
 .exit-chat-btn {
   color: #ef4444;
-  &:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); }
-  &.active { background: rgba(239, 68, 68, 0.12); }
+  &:hover:not(:disabled) { background: rgba(239,68,68,0.1); }
+  &.active { background: rgba(239,68,68,0.12); }
   svg path { stroke: currentColor; }
 }
 
 .close-button { display: none; }
 .rn-close-button { display: flex !important; }
-
-.header-call-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+.header-call-btn { display: flex; align-items: center; justify-content: center; }
 .relative { position: relative; }
 
 .confirm-popover {
@@ -397,23 +296,19 @@ export default {
   min-width: 220px;
   background: #ffffff;
   border-radius: 12px;
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 10px 24px -4px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 10px 24px -4px rgba(0,0,0,0.14);
   padding: 14px 16px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  animation: popoverIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid rgba(0,0,0,0.08);
+  animation: popoverIn 0.18s cubic-bezier(0.34,1.56,0.64,1);
 
   &::before {
     content: '';
     position: absolute;
-    top: -6px;
-    right: 10px;
-    width: 12px;
-    height: 12px;
+    top: -6px; right: 10px;
+    width: 12px; height: 12px;
     background: #ffffff;
-    border-left: 1px solid rgba(0, 0, 0, 0.08);
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-left: 1px solid rgba(0,0,0,0.08);
+    border-top: 1px solid rgba(0,0,0,0.08);
     transform: rotate(45deg);
     border-radius: 2px 0 0 0;
   }
@@ -431,7 +326,6 @@ export default {
   color: #1e293b;
   line-height: 1.45;
 }
-
 .confirm-sub {
   display: block;
   font-size: 11.5px;
@@ -440,12 +334,7 @@ export default {
   margin-top: 4px;
   line-height: 1.4;
 }
-
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
+.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 .confirm-btn {
   border: none;
@@ -472,7 +361,6 @@ export default {
   justify-content: center;
   min-width: 72px;
 }
-
 .confirm-ok--exit {
   background: #ef4444;
   &:hover:not(:disabled) { background: #dc2626; }
@@ -480,31 +368,23 @@ export default {
 
 .spinner {
   display: inline-block;
-  width: 13px;
-  height: 13px;
-  border: 2px solid rgba(255, 255, 255, 0.4);
+  width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,0.4);
   border-top-color: #ffffff;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
-
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .dark {
   .confirm-popover {
     background: #1e293b;
-    border-color: rgba(255, 255, 255, 0.1);
-    &::before { background: #1e293b; border-color: rgba(255, 255, 255, 0.1); }
+    border-color: rgba(255,255,255,0.1);
+    &::before { background: #1e293b; border-color: rgba(255,255,255,0.1); }
   }
   .confirm-text { color: #f1f5f9; }
   .confirm-sub  { color: #94a3b8; }
-  .confirm-cancel {
-    background: #334155;
-    color: #cbd5e1;
-    &:hover { background: #475569; }
-  }
-  .header-action-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-  }
+  .confirm-cancel { background: #334155; color: #cbd5e1; &:hover { background: #475569; } }
+  .header-action-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
 }
 </style>
