@@ -81,19 +81,15 @@ export default {
       return this.preChatFormEnabled ? this.options.preChatFields : [];
     },
     filteredPreChatFields() {
-      // Only hide fields when user has a real external identifier set via
-      // the JS API (setUser). For anonymous widget users (identifier = null),
-      // always show ALL fields so the user can enter fresh name/email every
-      // time — stale has_email / has_phone flags in Vuex memory must not
-      // hide fields after endChat() clears storage but not the store.
+      const isUserEmailAvailable = this.currentUser.has_email;
+      const isUserPhoneNumberAvailable = this.currentUser.has_phone_number;
       const isUserIdentifierAvailable = !!this.currentUser.identifier;
 
-      const isUserEmailAvailable =
-        isUserIdentifierAvailable && this.currentUser.has_email;
-      const isUserPhoneNumberAvailable =
-        isUserIdentifierAvailable && this.currentUser.has_phone_number;
-      const isUserNameAvailable = isUserIdentifierAvailable;
-
+      const isUserNameAvailable = !!(
+        isUserIdentifierAvailable ||
+        isUserEmailAvailable ||
+        isUserPhoneNumberAvailable
+      );
       return this.preChatFields.filter(field => {
         if (isUserEmailAvailable && field.name === 'emailAddress') {
           return false;
