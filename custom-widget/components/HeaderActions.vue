@@ -72,18 +72,34 @@ export default {
       popoutChatWindow(origin, websiteToken, this.$root.$i18n.locale, authToken);
     },
 
-    // ── Clear ALL Chatwoot keys from storage ──
+    // ── DEEP CLEAR: wipe ALL storage + cookies + window globals ──────────
+    // Chatwoot re-identifies old contact via cwc-unique-id stored in localStorage.
+    // We must wipe it ALL so the server sees a brand new anonymous visitor.
     clearAllSession() {
-      const lsKeys = Object.keys(localStorage).filter(
-        k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
-      );
-      lsKeys.forEach(k => localStorage.removeItem(k));
+      // 1. localStorage — wipe everything chatwoot-related
+      Object.keys(localStorage)
+        .filter(k =>
+          k.includes('chatwoot') ||
+          k.includes('cw_') ||
+          k.includes('cwc') ||
+          k.includes('user_unique_id') ||
+          k.includes('contact') ||
+          k.includes('conversation')
+        )
+        .forEach(k => localStorage.removeItem(k));
 
-      const ssKeys = Object.keys(sessionStorage).filter(
-        k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
-      );
-      ssKeys.forEach(k => sessionStorage.removeItem(k));
+      // 2. sessionStorage — same
+      Object.keys(sessionStorage)
+        .filter(k =>
+          k.includes('chatwoot') ||
+          k.includes('cw_') ||
+          k.includes('cwc') ||
+          k.includes('contact') ||
+          k.includes('conversation')
+        )
+        .forEach(k => sessionStorage.removeItem(k));
 
+      // 3. Cookies
       document.cookie.split(';').forEach(c => {
         const name = c.trim().split('=')[0];
         if (name.startsWith('cw_') || name.startsWith('cwc')) {
@@ -91,6 +107,43 @@ export default {
             name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
         }
       });
+
+      // 4. Window globals — Chatwoot sets these for identity
+      try { delete window.chatwootContactIdentity; } catch (_) {}
+      try { delete window.chatwootConversationId; } catch (_) {}
+      try { delete window.authToken; } catch (_) {}
+    },
+
+    // ── FULL VUEX RESET ──────────────────────────────────────────────────
+    // Root cause: Vuex still holds old contact name/email in memory.
+    // Home.vue reads conversationSize from Vuex → if > 0, skips pre-chat form.
+    // We must clear ALL contact + conversation + auth state from Vuex.
+    resetVuexStore() {
+      const s = this.$store;
+
+      // Clear conversations → conversationSize = 0 → Home.vue shows pre-chat form ✅
+      try { s.commit('conversation/clearConversations'); } catch (_) {}
+
+      // Clear contact identity (name, email, phone stored in Vuex)
+      try { s.commit('contacts/clearContact'); } catch (_) {}
+      try { s.commit('contacts/SET_CONTACT', {}); } catch (_) {}
+      try { s.commit('contact/setContact', {}); } catch (_) {}
+
+      // Clear conversation attributes (status, id, sender info in header)
+      try {
+        s.commit('conversationAttributes/setConversationParams', {
+          status: null,
+          id: null,
+          meta: {},
+        });
+      } catch (_) {}
+
+      // Clear auth token → widget re-authenticates as new visitor
+      try { s.commit('auth/setAuthToken', null); } catch (_) {}
+      try { s.commit('auth/clearAuth'); } catch (_) {}
+
+      // Catch-all global reset if the store exposes one
+      try { s.dispatch('resetState'); } catch (_) {}
     },
 
     sendCloseMessage() {
@@ -98,6 +151,15 @@ export default {
         IFrameHelper.sendMessage({ event: 'closeWindow' });
       } else if (RNHelper.isRNWebView) {
         RNHelper.sendMessage({ type: 'close-widget' });
+      }
+    },
+
+    // Tell the PARENT PAGE to call window.$chatwoot.reset()
+    // This clears the SDK session on the host page so server won't
+    // re-send the old contact token on next widget open
+    sendResetToParent() {
+      if (IFrameHelper.isIFrame()) {
+        IFrameHelper.sendMessage({ event: 'resetSession' });
       }
     },
 
@@ -109,28 +171,31 @@ export default {
       this.showConfirmExitChat = false;
     },
 
-    // ── PERFECT EXIT FLOW ──────────────────────────────────────────────────
-    // Root cause from Home.vue:
-    //   if (preChatFormEnabled && !conversationSize) → pre-chat form  ✅
-    //   else → messages (old chat)  ❌
+    // ── FULL EXIT FLOW ───────────────────────────────────────────────────
     //
-    // So the fix is:
-    //   1. Resolve conversation via toggleStatus API
-    //   2. commit('conversation/clearConversations')
-    //      → sets conversations = {} → conversationSize becomes 0
-    //   3. Clear all localStorage/sessionStorage
-    //   4. Navigate to 'home'
-    //      → Home.vue sees conversationSize = 0
-    //      → routes to 'prechat-form' automatically ✅
-    //   5. Close widget
-    // ─────────────────────────────────────────────────────────────────────
+    // WHY old name/email reappeared:
+    //   1. Vuex store still held contact data in memory
+    //   2. clearAllSession() only cleared storage but NOT Vuex
+    //   3. Parent page $chatwoot SDK still had the session token
+    //      → on next open, it re-sent the old contact ID to the server
+    //      → server returned "haya / jaha@ganas.com" again
+    //      → pre-chat form was skipped because contact was already identified
+    //
+    // Fix:
+    //   1. Resolve conversation on server (toggleStatus)
+    //   2. resetVuexStore() → clears contact + conversations in memory
+    //   3. clearAllSession() → wipes localStorage / cookies / window globals
+    //   4. sendResetToParent() → tells host page to reset $chatwoot SDK
+    //   5. Navigate to home → conversationSize = 0 → pre-chat form shows ✅
+    //   6. Close widget
+    // ────────────────────────────────────────────────────────────────────
     async endChat() {
       if (this.isEndingChat) return;
       this.isEndingChat = true;
       this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Resolve conversation via Chatwoot internal API
+        // 1. Resolve on server
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -138,33 +203,29 @@ export default {
             CONVERSATION_STATUS.PENDING,
           ].includes(this.conversationStatus)
         ) {
-          try {
-            await toggleStatus();
-          } catch (e) {
-            // ignore — may already be resolved
-          }
+          try { await toggleStatus(); } catch (_) {}
         }
 
-        // Step 2: Clear Vuex store — THIS makes conversationSize = 0
-        // Home.vue checks conversationSize to decide pre-chat vs messages
-        // clearConversations sets conversations = {} so size becomes 0
-        this.$store.commit('conversation/clearConversations');
+        // 2. Reset Vuex FIRST (before navigation)
+        this.resetVuexStore();
 
-        // Step 3: Clear all storage so widget has no session next open
+        // 3. Clear all storage + window globals
         this.clearAllSession();
 
-        // Step 4: Navigate to home
-        // Home.vue will now see conversationSize = 0
-        // and route to 'prechat-form' instead of 'messages' ✅
+        // 4. Tell parent page to reset SDK session
+        this.sendResetToParent();
+
+        // 5. Navigate to home — pre-chat form will now appear ✅
         await this.$router.replace({ name: 'home' });
 
-        // Step 5: Close the widget
+        // 6. Close widget
         this.sendCloseMessage();
 
       } catch (e) {
-        // Fallback
-        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
+        // Fallback — always clean up even if something throws
+        try { this.resetVuexStore(); } catch (_) {}
         this.clearAllSession();
+        this.sendResetToParent();
         try { await this.$router.replace({ name: 'home' }); } catch (_) {}
         this.sendCloseMessage();
       } finally {
@@ -232,7 +293,7 @@ export default {
         <p class="confirm-text">
           End and close this chat?
           <span class="confirm-sub">
-            Conversation will be resolved.<br/>
+            Conversation will be resolved.<br />
             Next open will start fresh.
           </span>
         </p>
