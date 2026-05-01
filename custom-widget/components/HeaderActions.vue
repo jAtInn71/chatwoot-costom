@@ -145,9 +145,13 @@ export default {
           }
         }
 
-        // Step 2: Clear Vuex store conversations
-        // This makes conversationSize = 0
+        // Step 2: Clear Vuex store conversations AND contacts
+        // conversations = {} → conversationSize = 0 → pre-chat form shows ✅
+        // contacts reset → currentUser.has_email/has_phone = false
+        //   → Form.vue filteredPreChatFields shows ALL fields fresh ✅
         this.$store.commit('conversation/clearConversations');
+        try { this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
+        try { this.$store.commit('contacts/setCurrentUser', {}); } catch (_) {}
 
         // Step 3: Clear ALL storage including cwc-unique-id
         // So next time widget opens, user is treated as brand new
@@ -185,6 +189,8 @@ export default {
 
       } catch (e) {
         try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
+        try { this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
+        try { this.$store.commit('contacts/setCurrentUser', {}); } catch (_) {}
         try { await this.$router.replace({ name: 'home' }); } catch (_) {}
         this.sendCloseMessage();
       } finally {
