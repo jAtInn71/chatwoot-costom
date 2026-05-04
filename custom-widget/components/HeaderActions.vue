@@ -80,6 +80,23 @@ export default {
       }
     },
 
+    // Notify the parent page to do a full SDK teardown + reload
+    sendExitChatMessage() {
+      if (IFrameHelper.isIFrame()) {
+        // Send to parent window so index.html can handle full SDK reset
+        IFrameHelper.sendMessage({ event: 'exitChat' });
+      } else if (RNHelper.isRNWebView) {
+        RNHelper.sendMessage({ type: 'exit-chat' });
+      } else {
+        // Direct (non-iframe) usage — dispatch on the top window
+        try {
+          window.top.dispatchEvent(new CustomEvent('chatwoot:exit-chat'));
+        } catch (_) {
+          window.dispatchEvent(new CustomEvent('chatwoot:exit-chat'));
+        }
+      }
+    },
+
     requestExitChat() {
       this.showConfirmExitChat = !this.showConfirmExitChat;
     },
@@ -115,31 +132,18 @@ export default {
         // Step 3: Clear contact Vuex store + all storage + axios header
         await this.$store.dispatch('contacts/clearCurrentUser');
 
-        // Step 3.5: Also clear cw_conversation from the iframe's own URL
-        // The widget iframe URL contains ?cw_conversation=JWT as a query param
-        // which the server uses to resume the old conversation — must be removed
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('cw_conversation');
-          window.history.replaceState({}, '', url.toString());
-        } catch (_) {}
-
-        // Step 4: Navigate back to home
-        await this.$router.replace({ name: 'home' });
-
-        // Step 5: Close the widget
-        this.sendCloseMessage();
+        // Step 4: Tell the parent page to fully destroy + reload the SDK.
+        //         This is the key step — a page reload is the only reliable way
+        //         to remove the cw_conversation JWT from the iframe src URL and
+        //         all localStorage keys so the next conversation starts fresh.
+        this.sendExitChatMessage();
 
       } catch (e) {
+        // Best-effort cleanup on error
         try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
         try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('cw_conversation');
-          window.history.replaceState({}, '', url.toString());
-        } catch (_) {}
-        try { await this.$router.replace({ name: 'home' }); } catch (_) {}
-        this.sendCloseMessage();
+        // Still tell the parent to reset so the user isn't stuck
+        this.sendExitChatMessage();
       } finally {
         this.isEndingChat = false;
       }
