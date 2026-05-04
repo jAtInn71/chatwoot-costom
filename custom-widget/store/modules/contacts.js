@@ -51,6 +51,8 @@ const clearAllChatwootStorage = () => {
         k.includes('cwc') ||
         k.includes('widget_auth')
       )
+      // PRESERVE chatwoot_user_data - don't delete it
+      .filter(k => k !== 'chatwoot_user_data')
       .forEach(k => storage.removeItem(k));
   });
 
@@ -88,6 +90,28 @@ export const actions = {
       commit(SET_CURRENT_USER, data);
     } catch (error) {
       // Ignore error
+    }
+  },
+
+  // Load user data that was saved during exitChat
+  loadSavedUserData: ({ commit }) => {
+    try {
+      const savedUserData = localStorage.getItem('chatwoot_user_data');
+      if (savedUserData) {
+        const userData = JSON.parse(savedUserData);
+        if (userData.name || userData.email) {
+          commit(SET_CURRENT_USER, {
+            has_email: !!userData.email,
+            has_phone_number: !!userData.phone_number,
+            identifier: null,
+            name: userData.name || '',
+            email: userData.email || '',
+            phone_number: userData.phone_number || '',
+          });
+        }
+      }
+    } catch (error) {
+      // Ignore error if localStorage is corrupted
     }
   },
 
@@ -162,24 +186,47 @@ export const actions = {
     }
   },
 
-  clearCurrentUser: ({ commit }) => {
-    // 1. Reset Vuex contact state
+  clearCurrentUser: ({ commit, state }) => {
+    // PRESERVE user data before clearing storage
+    const userDataToPreserve = {
+      name: state.currentUser.name,
+      email: state.currentUser.email,
+      phone_number: state.currentUser.phone_number,
+    };
+    
+    // 1. Reset Vuex contact state (but keep user's basic info)
     commit(SET_CURRENT_USER, {
       has_email: false,
       has_phone_number: false,
       identifier: null,
-      name: '',
-      email: '',
-      phone_number: '',
+      name: userDataToPreserve.name,
+      email: userDataToPreserve.email,
+      phone_number: userDataToPreserve.phone_number,
     });
 
     // 2. Remove axios auth header
     removeHeader('X-Auth-Token');
 
-    // 3. Wipe all storage inside the iframe
+    // 3. Save user data to localStorage before clearing
+    if (userDataToPreserve.name || userDataToPreserve.email) {
+      localStorage.setItem(
+        'chatwoot_user_data',
+        JSON.stringify(userDataToPreserve)
+      );
+    }
+
+    // 4. Wipe all storage inside the iframe (except user data)
     clearAllChatwootStorage();
 
-    // 4. Tell the parent page to fully destroy + reload the SDK.
+    // 5. Restore user data from preserved copy
+    if (userDataToPreserve.name || userDataToPreserve.email) {
+      localStorage.setItem(
+        'chatwoot_user_data',
+        JSON.stringify(userDataToPreserve)
+      );
+    }
+
+    // 6. Tell the parent page to fully destroy + reload the SDK.
     //    This is the critical step — the iframe src URL itself carries
     //    the ?cw_conversation=JWT param that makes the server recognise
     //    the old contact and skip the pre-chat form. The only way to
