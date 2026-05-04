@@ -6,7 +6,6 @@ module WebsiteTokenHelper
   def set_web_widget
     @web_widget = ::Channel::WebWidget.find_by!(website_token: permitted_params[:website_token])
     @current_account = @web_widget.inbox.account
-
     render json: { error: 'Account is suspended' }, status: :unauthorized unless @current_account.active?
   end
 
@@ -16,11 +15,15 @@ module WebsiteTokenHelper
     )
     @contact = @contact_inbox&.contact
 
-    # ── NEW: instead of raising 404, create a fresh contact+inbox ──
     if @contact.nil?
       @contact = create_new_contact
       @contact_inbox = create_contact_inbox(@contact)
     end
+
+    # ── KEY FIX: always set @inbox from web_widget ──
+    # base_controller inbox method uses auth_token_params[:inbox_id]
+    # which is nil when no auth token exists, causing 500 error
+    @inbox = @web_widget.inbox
 
     Current.contact = @contact
   end
