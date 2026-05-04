@@ -72,3 +72,4 @@ COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
 
 LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + New Chat + Exit Chat"
 LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and header action buttons"
+COPY custom-widget/patches/conversations_controller.rb /app/app/controllers/api/v1/widget/conversations_controller.rb
