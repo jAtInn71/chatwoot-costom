@@ -132,10 +132,9 @@ export default {
         // Step 3: Clear contact Vuex store + all storage + axios header
         await this.$store.dispatch('contacts/clearCurrentUser');
 
-        // Step 4: Tell the parent page to fully destroy + reload the SDK.
-        //         This is the key step — a page reload is the only reliable way
-        //         to remove the cw_conversation JWT from the iframe src URL and
-        //         all localStorage keys so the next conversation starts fresh.
+        // Step 4: Tell the parent page to close the bubble and fully reload the SDK.
+        //         closeWindow hides the bubble immediately; exitChat does the full teardown.
+        this.sendCloseMessage();
         this.sendExitChatMessage();
 
       } catch (e) {
@@ -143,6 +142,7 @@ export default {
         try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
         try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
         // Still tell the parent to reset so the user isn't stuck
+        this.sendCloseMessage();
         this.sendExitChatMessage();
       } finally {
         this.isEndingChat = false;
@@ -249,7 +249,7 @@ export default {
   svg path { stroke: currentColor; }
 }
 
-.close-button { display: none; }
+.close-button { display: flex; }
 .rn-close-button { display: flex !important; }
 .header-call-btn { display: flex; align-items: center; justify-content: center; }
 .relative { position: relative; }

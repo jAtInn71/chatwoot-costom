@@ -138,24 +138,8 @@ export default {
     },
   },
   mounted() {
-    // Load user data that was saved from the previous chat session
-    this.$store.dispatch('contacts/loadSavedUserData');
-    
-    // Pre-fill form with saved user data
-    const savedUserData = localStorage.getItem('chatwoot_user_data');
-    if (savedUserData) {
-      try {
-        const { name, email, phone_number } = JSON.parse(savedUserData);
-        this.formValues = {
-          fullName: name || '',
-          emailAddress: email || '',
-          phoneNumber: phone_number || '',
-          message: this.formValues.message || '',
-        };
-      } catch (e) {
-        // Ignore if localStorage data is corrupted
-      }
-    }
+    // Do NOT pre-fill from localStorage — each session should start fresh.
+    // (chatwoot_user_data is cleared on exitChat via clearAllChatwootStorage)
   },
   methods: {
     labelClass(input) {

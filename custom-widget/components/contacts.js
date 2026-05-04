@@ -37,6 +37,8 @@ const clearAllChatwootStorage = () => {
     'cw_d',
     'cw_auth_token',
     'widget_auth_token',
+    // Clear saved user data so pre-chat form starts fresh on next open
+    'chatwoot_user_data',
   ];
   explicitKeys.forEach(k => {
     localStorage.removeItem(k);
