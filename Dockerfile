@@ -19,6 +19,7 @@ COPY custom-widget/store/modules/elevenlabsVoice.js app/javascript/widget/store/
 COPY custom-widget/store/modules/contacts.js app/javascript/widget/store/modules/contacts.js
 COPY custom-widget/patches/configMixin.js app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json app/javascript/widget/i18n/locale/en.json
+COPY custom-widget/views/Home.vue app/javascript/widget/views/Home.vue
 
 ARG VITE_ELEVENLABS_AGENT_ID=agent_6601kc1fqeecfc88s7d52jde0syq
 ARG VITE_ELEVENLABS_VOICE_ID=
@@ -69,6 +70,7 @@ COPY custom-widget/store/modules/elevenlabsVoice.js /app/app/javascript/widget/s
 COPY custom-widget/store/modules/contacts.js /app/app/javascript/widget/store/modules/contacts.js
 COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
+COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
 
 LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + New Chat + Exit Chat"
 LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and header action buttons"
