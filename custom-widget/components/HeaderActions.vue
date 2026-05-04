@@ -94,7 +94,7 @@ export default {
       this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Resolve the conversation via Chatwoot API
+        // Step 1: Resolve the conversation on the server
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -113,45 +113,19 @@ export default {
         // conversations = {} → conversationSize = 0 → pre-chat form shows ✅
         this.$store.commit('conversation/clearConversations');
 
-        // Step 3: Clear contact Vuex store using our new action
-        // This resets has_email / has_phone_number / identifier to false/null
-        // so filteredPreChatFields in Form.vue shows ALL fields fresh ✅
+        // Step 3: Clear contact Vuex store AND all localStorage/sessionStorage/cookies
+        // contacts/clearCurrentUser now handles ALL storage clearing internally,
+        // so the next widget open is treated as a brand-new visitor:
+        //   - has_email / has_phone_number → false  (pre-chat form shows all fields)
+        //   - cwc-unique-id cleared          (server creates a NEW contact record)
+        //   - cw_d cookie cleared            (no stale device token)
         await this.$store.dispatch('contacts/clearCurrentUser');
 
-        // Step 4: Clear ALL localStorage / sessionStorage chatwoot keys
-        // so next session is treated as brand new visitor
-        const explicitKeys = [
-          'cwc-unique-id',
-          'cwc-session',
-          'cw_contact_uuid',
-          'cw_conversation_id',
-          'chatwoot_contact_id',
-          'chatwoot_conversation_id',
-          'chatwootContactIdentity',
-          'user_color',
-          'user_uuid',
-          'cw_d',
-        ];
-        explicitKeys.forEach(k => {
-          localStorage.removeItem(k);
-          sessionStorage.removeItem(k);
-        });
-
-        const lsKeys = Object.keys(localStorage).filter(
-          k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
-        );
-        lsKeys.forEach(k => localStorage.removeItem(k));
-
-        const ssKeys = Object.keys(sessionStorage).filter(
-          k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')
-        );
-        ssKeys.forEach(k => sessionStorage.removeItem(k));
-
-        // Step 5: Navigate back to home
+        // Step 4: Navigate back to home
         // Home.vue sees conversationSize = 0 → routes to pre-chat form ✅
         await this.$router.replace({ name: 'home' });
 
-        // Step 6: Close the widget
+        // Step 5: Close the widget
         this.sendCloseMessage();
 
       } catch (e) {

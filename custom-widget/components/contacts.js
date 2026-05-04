@@ -2,13 +2,16 @@ import { sendMessage } from 'widget/helpers/utils';
 import ContactsAPI from '../../api/contacts';
 import { SET_USER_ERROR } from '../../constants/errorTypes';
 import { setHeader } from '../../helpers/axios';
+
 const state = {
   currentUser: {},
 };
 
 const SET_CURRENT_USER = 'SET_CURRENT_USER';
+
 const parseErrorData = error =>
   error && error.response && error.response.data ? error.response.data : error;
+
 export const updateWidgetAuthToken = widgetAuthToken => {
   if (widgetAuthToken) {
     setHeader(widgetAuthToken);
@@ -17,6 +20,61 @@ export const updateWidgetAuthToken = widgetAuthToken => {
       data: { widgetAuthToken },
     });
   }
+};
+
+// ── Single source of truth for wiping Chatwoot identity ─────────────────────
+// Clears localStorage, sessionStorage, AND cookies so the SDK treats the
+// next widget open as a completely fresh visitor (new contact record, empty
+// pre-chat form). Called inside clearCurrentUser so HeaderActions only needs
+// to dispatch one action.
+const clearAllChatwootStorage = () => {
+  // 1. Explicit known keys
+  const explicitKeys = [
+    'cwc-unique-id',           // ← THE critical widget device/contact UUID
+    'cwc-session',
+    'cw_contact_uuid',
+    'cw_conversation_id',
+    'chatwoot_contact_id',
+    'chatwoot_conversation_id',
+    'chatwootContactIdentity',
+    'user_color',
+    'user_uuid',
+    'cw_d',                    // Chatwoot device token (also set as cookie)
+    'cw_auth_token',
+    'widget_auth_token',
+  ];
+  explicitKeys.forEach(k => {
+    localStorage.removeItem(k);
+    sessionStorage.removeItem(k);
+  });
+
+  // 2. Pattern sweep — catch any other cw_ / chatwoot / cwc keys
+  [localStorage, sessionStorage].forEach(storage => {
+    Object.keys(storage)
+      .filter(k =>
+        k.includes('chatwoot') ||
+        k.includes('cw_') ||
+        k.includes('cwc') ||
+        k.includes('widget_auth')
+      )
+      .forEach(k => storage.removeItem(k));
+  });
+
+  // 3. Clear Chatwoot cookies
+  // The SDK sets `cw_d` as a cookie; clearing it forces the server to treat
+  // the next request as a brand-new visitor, creating a fresh contact record.
+  document.cookie.split(';').forEach(cookie => {
+    const name = cookie.split('=')[0].trim();
+    if (
+      name.includes('chatwoot') ||
+      name.includes('cw_') ||
+      name.includes('cwc') ||
+      name === 'cw_d'
+    ) {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${location.hostname}`;
+    }
+  });
 };
 
 export const getters = {
@@ -34,6 +92,7 @@ export const actions = {
       // Ignore error
     }
   },
+
   update: async ({ dispatch }, { user }) => {
     try {
       await ContactsAPI.update(user);
@@ -42,6 +101,7 @@ export const actions = {
       // Ignore error
     }
   },
+
   setUser: async ({ dispatch }, { identifier, user: userObject }) => {
     try {
       const {
@@ -87,6 +147,7 @@ export const actions = {
       sendMessage({ event: 'error', errorType: SET_USER_ERROR, data });
     }
   },
+
   setCustomAttributes: async (_, customAttributes = {}) => {
     try {
       await ContactsAPI.setCustomAttributes(customAttributes);
@@ -94,6 +155,7 @@ export const actions = {
       // Ignore error
     }
   },
+
   deleteCustomAttribute: async (_, customAttribute) => {
     try {
       await ContactsAPI.deleteCustomAttribute(customAttribute);
@@ -102,7 +164,9 @@ export const actions = {
     }
   },
 
-  // ── NEW: called by HeaderActions endChat() to wipe contact identity ──
+  // ── Called by HeaderActions.endChat() to fully wipe contact identity ──────
+  // Resets Vuex state to empty AND clears all storage/cookies so the next
+  // widget open is a completely fresh session with an empty pre-chat form.
   clearCurrentUser: ({ commit }) => {
     commit(SET_CURRENT_USER, {
       has_email: false,
@@ -110,13 +174,15 @@ export const actions = {
       identifier: null,
       name: '',
       email: '',
+      phone_number: '',
     });
+    clearAllChatwootStorage();
   },
 };
 
 export const mutations = {
   [SET_CURRENT_USER]($state, user) {
-    // ── CHANGED: full replace instead of merge so old fields are wiped ──
+    // Full replace instead of merge so NO stale fields survive from old contact
     $state.currentUser = { ...user };
   },
 };
