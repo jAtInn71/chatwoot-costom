@@ -33,7 +33,6 @@ ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}
 RUN NODE_OPTIONS="--max-old-space-size=4096" \
     node_modules/.bin/vite build --config vite.config.ts
 
-# Show what was built - helps debug output path
 RUN echo "=== BUILD OUTPUT ===" && \
     find /chatwoot-src/public -type f | head -30 && \
     echo "==================="
@@ -49,7 +48,7 @@ ENV VITE_ELEVENLABS_AGENT_ID=${VITE_ELEVENLABS_AGENT_ID}
 ENV VITE_ELEVENLABS_VOICE_ID=${VITE_ELEVENLABS_VOICE_ID}
 ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}
 
-# Copy ALL public build output (not just /vite subfolder)
+# Copy ALL public build output
 COPY --from=node-builder /chatwoot-src/public /app/public
 
 # Backend patches
@@ -74,7 +73,9 @@ COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/conf
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
 COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
 
-LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + New Chat + Exit Chat"
-LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and header action buttons"
+# Backend controller patches
 COPY custom-widget/patches/conversations_controller.rb /app/app/controllers/api/v1/widget/conversations_controller.rb
 COPY custom-widget/patches/website_token_helper.rb /app/app/controllers/concerns/website_token_helper.rb
+
+LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + New Chat + Exit Chat"
+LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and header action buttons"

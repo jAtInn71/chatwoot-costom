@@ -131,8 +131,13 @@
 
     // ── Clear ALL Chatwoot storage ────────────────────────────────────────────
     function clearAllChatwootData() {
+      // Save user data before clearing
+      const userDataToPreserve = localStorage.getItem('chatwoot_user_data');
+      
       Object.keys(localStorage)
         .filter(k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc'))
+        // Don't delete chatwoot_user_data - we need to preserve it for next session
+        .filter(k => k !== 'chatwoot_user_data')
         .forEach(k => localStorage.removeItem(k));
 
       Object.keys(sessionStorage)
@@ -146,7 +151,12 @@
         }
       });
 
-      console.log('🗑️ All Chatwoot data cleared');
+      // Restore user data if it existed
+      if (userDataToPreserve) {
+        localStorage.setItem('chatwoot_user_data', userDataToPreserve);
+      }
+
+      console.log('🗑️ All Chatwoot data cleared (user data preserved)');
     }
 
     // ── Destroy SDK completely from memory ────────────────────────────────────

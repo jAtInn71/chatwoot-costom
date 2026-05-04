@@ -20,9 +20,7 @@ module WebsiteTokenHelper
       @contact_inbox = create_contact_inbox(@contact)
     end
 
-    # ── KEY FIX: always set @inbox from web_widget ──
-    # base_controller inbox method uses auth_token_params[:inbox_id]
-    # which is nil when no auth token exists, causing 500 error
+    # Always set @inbox from web_widget so base_controller inbox method works
     @inbox = @web_widget.inbox
 
     Current.contact = @contact
