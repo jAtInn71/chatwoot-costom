@@ -70,7 +70,7 @@ COPY custom-widget/store/modules/elevenlabsVoice.js /app/app/javascript/widget/s
 COPY custom-widget/store/modules/contacts.js /app/app/javascript/widget/store/modules/contacts.js
 COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
-COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
+COPY custom-widget/view/Home.vue /app/app/javascript/widget/views/Home.vue
 
 LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + New Chat + Exit Chat"
 LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and header action buttons"
