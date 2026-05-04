@@ -1,7 +1,7 @@
 import { sendMessage } from 'widget/helpers/utils';
 import ContactsAPI from '../../api/contacts';
 import { SET_USER_ERROR } from '../../constants/errorTypes';
-import { setHeader } from '../../helpers/axios';
+import { setHeader, removeHeader } from '../../helpers/axios';
 
 const state = {
   currentUser: {},
@@ -176,6 +176,16 @@ export const actions = {
       email: '',
       phone_number: '',
     });
+
+    // ── CRITICAL: wipe the in-memory axios Authorization header ─────────────
+    // Even after clearing localStorage, the axios instance keeps the old
+    // widget_auth_token in memory. This means the next createConversation
+    // call goes to the server as the OLD contact (kai, jaam, etc.) and
+    // Chatwoot updates that contact instead of creating a fresh one.
+    // Setting header to null forces the next request to be unauthenticated,
+    // so Chatwoot creates a BRAND NEW contact with the new name/email. ✅
+    removeHeader('X-Auth-Token');
+
     clearAllChatwootStorage();
   },
 };
