@@ -90,7 +90,12 @@
     <button onclick="toggleWidget()">💬 Toggle Chat Widget</button>
     <div class="button-group">
       <button class="btn-new-chat" onclick="newChat()">🔄 New Chat</button>
-      <button class="btn-exit-chat" onclick="exitChat()">❌ Exit Chat</button>
+      <!--
+        "Exit Chat" on this page does the same full reset as New Chat.
+        The real per-conversation Exit button lives inside the widget header (HeaderActions.vue).
+        Both paths funnel into resetAndReload() so behaviour is identical.
+      -->
+      <button class="btn-exit-chat" onclick="resetAndReload()">❌ Exit Chat</button>
     </div>
     <div class="widget-status">
       <p><span class="dot active"></span><span id="widget-status-text">Widget is ready</span></p>
@@ -108,7 +113,7 @@
       type: "standard",
     };
 
-    // ── Load SDK ────────────────────────────────────────────────────────────
+    // ── Load SDK ─────────────────────────────────────────────────────────────
     function loadSDK() {
       var g = document.createElement('script');
       g.src   = BASE_URL + "/packs/js/sdk.js";
@@ -124,7 +129,7 @@
       };
     }
 
-    // ── Clear ALL Chatwoot storage ──────────────────────────────────────────
+    // ── Clear ALL Chatwoot storage ────────────────────────────────────────────
     function clearAllChatwootData() {
       Object.keys(localStorage)
         .filter(k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc'))
@@ -144,7 +149,7 @@
       console.log('🗑️ All Chatwoot data cleared');
     }
 
-    // ── Destroy SDK completely from memory ──────────────────────────────────
+    // ── Destroy SDK completely from memory ────────────────────────────────────
     function destroySDK() {
       ['woot-widget-holder', 'woot--bubble-holder', 'chatwoot-widget-holder'].forEach(cls => {
         document.querySelectorAll('.' + cls).forEach(el => el.remove());
@@ -165,7 +170,7 @@
       console.log('💥 SDK destroyed');
     }
 
-    // ── Resolve conversation via API ────────────────────────────────────────
+    // ── Resolve conversation via API ──────────────────────────────────────────
     async function resolveConversation(conversationId) {
       if (!conversationId) return;
       try {
@@ -186,7 +191,7 @@
       }
     }
 
-    // ── Get conversation ID from localStorage ───────────────────────────────
+    // ── Get conversation ID from localStorage ─────────────────────────────────
     function getConversationId() {
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -197,37 +202,55 @@
       return null;
     }
 
-    // ── Toggle widget ───────────────────────────────────────────────────────
+    // ── Core reset: resolve → destroy → clear → reload ────────────────────────
+    // This is the single source of truth for a full fresh-start.
+    // Both newChat(), exitChat (page button), and the widget's exitChat event
+    // all funnel here so behaviour is always identical.
+    async function resetAndReload(label) {
+      label = label || 'reset';
+      console.log(`🔄 [${label}] Starting full reset...`);
+      document.getElementById('widget-status-text').textContent = 'Resetting chat...';
+
+      const conversationId = getConversationId();
+      if (conversationId) await resolveConversation(conversationId);
+
+      destroySDK();
+      clearAllChatwootData();
+
+      // A full page reload is the only reliable way to flush the cw_conversation
+      // JWT that lives in the iframe src URL — no in-memory trick survives it.
+      setTimeout(() => location.reload(), 500);
+    }
+
+    // ── Toggle widget ─────────────────────────────────────────────────────────
     function toggleWidget() {
       if (window.$chatwoot) window.$chatwoot.toggle();
     }
 
-    // ── New Chat ────────────────────────────────────────────────────────────
+    // ── New Chat (button) ─────────────────────────────────────────────────────
     async function newChat() {
-      console.log('🔄 Starting new chat...');
-      document.getElementById('widget-status-text').textContent = 'Starting new chat...';
-      const conversationId = getConversationId();
-      if (conversationId) await resolveConversation(conversationId);
-      destroySDK();
-      clearAllChatwootData();
-      // Full reload kills SDK memory — no old token survives
-      setTimeout(() => location.reload(), 500);
+      await resetAndReload('newChat');
     }
 
-    // ── Exit Chat ───────────────────────────────────────────────────────────
-    async function exitChat() {
-      console.log('📤 Exiting chat...');
-      document.getElementById('widget-status-text').textContent = 'Closing chat...';
-      const conversationId = getConversationId();
-      if (conversationId) await resolveConversation(conversationId);
-      destroySDK();
-      clearAllChatwootData();
-      console.log('✅ Chat exited');
-      // Full reload kills SDK memory completely — no old cw_conversation token survives
-      setTimeout(() => location.reload(), 800);
-    }
+    // ── Listen for exitChat event fired by HeaderActions.vue inside the iframe ─
+    // When the user clicks "Exit Chat" inside the widget, HeaderActions sends
+    // an IFrameHelper message with event: 'exitChat'.  The SDK forwards all
+    // widget messages to the parent via window.postMessage so we catch it here.
+    window.addEventListener('message', function (e) {
+      // Chatwoot SDK wraps messages as { event, ... }
+      if (e.data && e.data.event === 'exitChat') {
+        console.log('📨 Received exitChat from widget — running full reset');
+        resetAndReload('widgetExit');
+      }
+    });
 
-    // ── Start ───────────────────────────────────────────────────────────────
+    // Also support the CustomEvent path (non-iframe / direct usage)
+    window.addEventListener('chatwoot:exit-chat', function () {
+      console.log('📨 chatwoot:exit-chat event received — running full reset');
+      resetAndReload('widgetExitDirect');
+    });
+
+    // ── Start ─────────────────────────────────────────────────────────────────
     loadSDK();
   </script>
 </body>

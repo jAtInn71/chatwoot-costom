@@ -27,7 +27,7 @@ const clearAllChatwootStorage = () => {
     'cwc-unique-id',
     'cwc-session',
     'cw_contact_uuid',
-    'cw_conversation',              // ← ADDED
+    'cw_conversation',
     'cw_conversation_id',
     'chatwoot_contact_id',
     'chatwoot_conversation_id',
@@ -67,7 +67,7 @@ const clearAllChatwootStorage = () => {
     }
   });
 
-  // ← ADDED: clear cw_conversation from parent page URL query params
+  // Clear cw_conversation from the iframe's own URL query params
   try {
     const url = new URL(window.location.href);
     url.searchParams.delete('cw_conversation');
@@ -163,6 +163,7 @@ export const actions = {
   },
 
   clearCurrentUser: ({ commit }) => {
+    // 1. Reset Vuex contact state
     commit(SET_CURRENT_USER, {
       has_email: false,
       has_phone_number: false,
@@ -171,8 +172,20 @@ export const actions = {
       email: '',
       phone_number: '',
     });
+
+    // 2. Remove axios auth header
     removeHeader('X-Auth-Token');
+
+    // 3. Wipe all storage inside the iframe
     clearAllChatwootStorage();
+
+    // 4. Tell the parent page to fully destroy + reload the SDK.
+    //    This is the critical step — the iframe src URL itself carries
+    //    the ?cw_conversation=JWT param that makes the server recognise
+    //    the old contact and skip the pre-chat form. The only way to
+    //    remove it is to let the parent tear down the whole iframe and
+    //    re-inject the SDK script fresh (no JWT in the new src).
+    sendMessage({ event: 'exitChat' });
   },
 };
 
