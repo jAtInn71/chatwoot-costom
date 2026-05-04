@@ -110,28 +110,34 @@ export default {
         }
 
         // Step 2: Clear conversation Vuex store
-        // conversations = {} → conversationSize = 0 → pre-chat form shows ✅
         this.$store.commit('conversation/clearConversations');
 
-        // Step 3: Clear contact Vuex store AND all localStorage/sessionStorage/cookies
-        // contacts/clearCurrentUser now handles ALL storage clearing internally,
-        // so the next widget open is treated as a brand-new visitor:
-        //   - has_email / has_phone_number → false  (pre-chat form shows all fields)
-        //   - cwc-unique-id cleared          (server creates a NEW contact record)
-        //   - cw_d cookie cleared            (no stale device token)
+        // Step 3: Clear contact Vuex store + all storage + axios header
         await this.$store.dispatch('contacts/clearCurrentUser');
 
+        // Step 3.5: Also clear cw_conversation from the iframe's own URL
+        // The widget iframe URL contains ?cw_conversation=JWT as a query param
+        // which the server uses to resume the old conversation — must be removed
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('cw_conversation');
+          window.history.replaceState({}, '', url.toString());
+        } catch (_) {}
+
         // Step 4: Navigate back to home
-        // Home.vue sees conversationSize = 0 → routes to pre-chat form ✅
         await this.$router.replace({ name: 'home' });
 
         // Step 5: Close the widget
         this.sendCloseMessage();
 
       } catch (e) {
-        // Fallback: still try to clean up
         try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
         try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('cw_conversation');
+          window.history.replaceState({}, '', url.toString());
+        } catch (_) {}
         try { await this.$router.replace({ name: 'home' }); } catch (_) {}
         this.sendCloseMessage();
       } finally {
@@ -142,11 +148,9 @@ export default {
 };
 </script>
 
-<!-- eslint-disable-next-line vue/no-root-v-if -->
 <template>
   <div v-if="showHeaderActions" class="actions flex items-center gap-1">
 
-    <!-- 📞 ElevenLabs AI Call button -->
     <ElevenLabsVoiceButton
       v-if="showCallButton"
       :color="widgetColor"
@@ -154,7 +158,6 @@ export default {
       class="header-call-btn"
     />
 
-    <!-- ✖ Exit Chat button — with confirmation popover -->
     <div v-if="canEndChat && showEndConversationButton" class="relative">
       <button
         class="header-action-btn exit-chat-btn"
@@ -163,38 +166,13 @@ export default {
         title="Exit & Close Chat"
         @click="requestExitChat"
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M16 17L21 12L16 7"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <path
-            d="M21 12H9"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16 17L21 12L16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
 
-      <!-- Confirmation popover -->
       <div v-if="showConfirmExitChat" class="confirm-popover">
         <p class="confirm-text">
           End and close this chat?
@@ -219,7 +197,6 @@ export default {
       </div>
     </div>
 
-    <!-- Popout button -->
     <button
       v-if="showPopoutButton"
       class="header-action-btn new-window--button"
@@ -228,7 +205,6 @@ export default {
       <FluentIcon icon="open" size="20" class="text-n-slate-12" />
     </button>
 
-    <!-- ✕ Close button (RN WebView only) -->
     <button
       class="header-action-btn close-button"
       :class="{ 'rn-close-button': isRNWebView }"
@@ -241,9 +217,7 @@ export default {
 </template>
 
 <style scoped lang="scss">
-.actions {
-  position: relative;
-}
+.actions { position: relative; }
 
 .header-action-btn {
   display: flex;
@@ -258,11 +232,7 @@ export default {
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
   padding: 0;
-
-  &:hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.07);
-    transform: scale(1.05);
-  }
+  &:hover:not(:disabled) { background: rgba(0, 0, 0, 0.07); transform: scale(1.05); }
   &:active:not(:disabled) { transform: scale(0.95); }
   &:disabled { opacity: 0.4; cursor: not-allowed; }
   &.active { background: rgba(0, 0, 0, 0.1); }
@@ -277,13 +247,7 @@ export default {
 
 .close-button { display: none; }
 .rn-close-button { display: flex !important; }
-
-.header-call-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+.header-call-btn { display: flex; align-items: center; justify-content: center; }
 .relative { position: relative; }
 
 .confirm-popover {
@@ -294,13 +258,10 @@ export default {
   min-width: 220px;
   background: #ffffff;
   border-radius: 12px;
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 10px 24px -4px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 10px 24px -4px rgba(0,0,0,0.14);
   padding: 14px 16px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0,0,0,0.08);
   animation: popoverIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-
   &::before {
     content: '';
     position: absolute;
@@ -309,8 +270,8 @@ export default {
     width: 12px;
     height: 12px;
     background: #ffffff;
-    border-left: 1px solid rgba(0, 0, 0, 0.08);
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-left: 1px solid rgba(0,0,0,0.08);
+    border-top: 1px solid rgba(0,0,0,0.08);
     transform: rotate(45deg);
     border-radius: 2px 0 0 0;
   }
@@ -338,11 +299,7 @@ export default {
   line-height: 1.4;
 }
 
-.confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
+.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 .confirm-btn {
   border: none;
@@ -379,7 +336,7 @@ export default {
   display: inline-block;
   width: 13px;
   height: 13px;
-  border: 2px solid rgba(255, 255, 255, 0.4);
+  border: 2px solid rgba(255,255,255,0.4);
   border-top-color: #ffffff;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -390,18 +347,12 @@ export default {
 .dark {
   .confirm-popover {
     background: #1e293b;
-    border-color: rgba(255, 255, 255, 0.1);
-    &::before { background: #1e293b; border-color: rgba(255, 255, 255, 0.1); }
+    border-color: rgba(255,255,255,0.1);
+    &::before { background: #1e293b; border-color: rgba(255,255,255,0.1); }
   }
   .confirm-text { color: #f1f5f9; }
-  .confirm-sub  { color: #94a3b8; }
-  .confirm-cancel {
-    background: #334155;
-    color: #cbd5e1;
-    &:hover { background: #475569; }
-  }
-  .header-action-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.08);
-  }
+  .confirm-sub { color: #94a3b8; }
+  .confirm-cancel { background: #334155; color: #cbd5e1; &:hover { background: #475569; } }
+  .header-action-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
 }
 </style>

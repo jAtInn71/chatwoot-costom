@@ -27,6 +27,7 @@ const clearAllChatwootStorage = () => {
     'cwc-unique-id',
     'cwc-session',
     'cw_contact_uuid',
+    'cw_conversation',              // ← ADDED
     'cw_conversation_id',
     'chatwoot_contact_id',
     'chatwoot_conversation_id',
@@ -65,6 +66,13 @@ const clearAllChatwootStorage = () => {
       document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${location.hostname}`;
     }
   });
+
+  // ← ADDED: clear cw_conversation from parent page URL query params
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('cw_conversation');
+    window.history.replaceState({}, '', url.toString());
+  } catch (_) {}
 };
 
 export const getters = {

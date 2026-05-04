@@ -1,12 +1,10 @@
 # ── Stage 1: Node.js build environment ────────────────────────────────────────
 FROM node:18-alpine AS node-builder
 
-# Install pnpm
 RUN npm install -g pnpm
 
 WORKDIR /chatwoot-src
 
-# Clone Chatwoot source to get node_modules and vite config
 RUN apk add --no-cache git && \
     git clone --depth 1 https://github.com/chatwoot/chatwoot.git . && \
     pnpm install --frozen-lockfile
@@ -22,7 +20,6 @@ COPY custom-widget/store/modules/contacts.js app/javascript/widget/store/modules
 COPY custom-widget/patches/configMixin.js app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json app/javascript/widget/i18n/locale/en.json
 
-# Build the widget assets
 ARG VITE_ELEVENLABS_AGENT_ID=agent_6601kc1fqeecfc88s7d52jde0syq
 ARG VITE_ELEVENLABS_VOICE_ID=
 ARG VITE_ELEVENLABS_AGENT_NAME=AI Assistant
@@ -33,6 +30,11 @@ ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}
 
 RUN NODE_OPTIONS="--max-old-space-size=4096" \
     node_modules/.bin/vite build --config vite.config.ts
+
+# Show what was built - helps debug output path
+RUN echo "=== BUILD OUTPUT ===" && \
+    find /chatwoot-src/public -type f | head -30 && \
+    echo "==================="
 
 # ── Stage 2: Final Chatwoot image ─────────────────────────────────────────────
 FROM chatwoot/chatwoot:latest
@@ -45,8 +47,8 @@ ENV VITE_ELEVENLABS_AGENT_ID=${VITE_ELEVENLABS_AGENT_ID}
 ENV VITE_ELEVENLABS_VOICE_ID=${VITE_ELEVENLABS_VOICE_ID}
 ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}
 
-# Copy freshly built assets from node builder
-COPY --from=node-builder /chatwoot-src/public/vite /app/public/vite
+# Copy ALL public build output (not just /vite subfolder)
+COPY --from=node-builder /chatwoot-src/public /app/public
 
 # Backend patches
 COPY custom-widget/patches/web_widget.rb /app/app/models/channel/web_widget.rb
