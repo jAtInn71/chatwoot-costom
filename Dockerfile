@@ -18,6 +18,7 @@ COPY custom-widget/components/HeaderActions.vue app/javascript/widget/components
 COPY custom-widget/store/index.js app/javascript/widget/store/index.js
 COPY custom-widget/store/modules/appConfig.js app/javascript/widget/store/modules/appConfig.js
 COPY custom-widget/store/modules/elevenlabsVoice.js app/javascript/widget/store/modules/elevenlabsVoice.js
+COPY custom-widget/store/modules/contacts.js app/javascript/widget/store/modules/contacts.js
 COPY custom-widget/patches/configMixin.js app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json app/javascript/widget/i18n/locale/en.json
 
@@ -63,6 +64,7 @@ COPY custom-widget/components/HeaderActions.vue /app/app/javascript/widget/compo
 COPY custom-widget/store/index.js /app/app/javascript/widget/store/index.js
 COPY custom-widget/store/modules/appConfig.js /app/app/javascript/widget/store/modules/appConfig.js
 COPY custom-widget/store/modules/elevenlabsVoice.js /app/app/javascript/widget/store/modules/elevenlabsVoice.js
+COPY custom-widget/store/modules/contacts.js /app/app/javascript/widget/store/modules/contacts.js
 COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
 
