@@ -109,7 +109,7 @@ export default {
       'setBubbleVisibility',
       'setColorScheme',
     ]),
-    ...mapActions('conversation', ['fetchOldConversations']),
+    ...mapActions('conversation', ['fetchOldConversations', 'clearConversations']),
     ...mapActions('campaign', [
       'initCampaigns',
       'executeCampaign',
@@ -288,29 +288,34 @@ export default {
           this.setAppConfig(message);
           this.configReady = true;
 
-          // Fetch conversations. On a fresh/post-exit session the token is
-          // gone so this will either be empty or return nothing useful.
-          // The 404 handler in conversation/fetchOldConversations clears the
-          // store → conversationSize stays 0 → Home.vue routes to prechat-form.
-          this.fetchOldConversations().then(() => this.setUnreadView());
-          this.fetchAvailableAgents(websiteToken);
-
           // ── KEY FIX ──────────────────────────────────────────────────────
-          // ONLY call contacts/get when a valid auth token exists (i.e. the
-          // user has an existing session from a previous visit).
+          // On a fresh/post-exit session (no auth token):
+          //   1. Clear the Vuex conversation store immediately so
+          //      conversationSize = 0 before Home.vue mounts.
+          //      Without this, stale messages from the previous session
+          //      remain in the store and Home.vue routes to `messages`
+          //      (blank screen) instead of `prechat-form`.
+          //   2. Skip fetchOldConversations entirely — there is no session
+          //      to fetch from, and calling it can return stale data or
+          //      create ghost contacts on the server.
+          //   3. Skip contacts/get — same reason. Calling it with no token
+          //      causes the server to create a new anonymous "Visitor"
+          //      contact, bypassing the pre-chat form entirely.
           //
-          // If we call it on a fresh/post-exit session (no token), the server
-          // creates a new anonymous "Visitor" contact and returns a session,
-          // which makes the widget skip the pre-chat form and show a blank
-          // messages screen instead.
-          //
-          // On a fresh session, the pre-chat form submission handles contact
-          // creation itself via conversation/createConversation. We don't need
-          // to pre-load any contact data here.
+          // On an existing session (token present):
+          //   - Fetch conversations normally so returning users see history.
+          //   - Fetch contact data to populate the store.
           // ─────────────────────────────────────────────────────────────────
           if (this.hasValidAuthToken()) {
+            this.fetchOldConversations().then(() => this.setUnreadView());
             this.$store.dispatch('contacts/get');
+          } else {
+            // No session — wipe any stale Vuex state immediately so
+            // Home.vue sees conversationSize = 0 and routes to prechat-form.
+            this.clearConversations();
           }
+
+          this.fetchAvailableAgents(websiteToken);
 
           this.setCampaignReadData(message.campaignsSnoozedTill);
 
