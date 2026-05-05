@@ -94,7 +94,7 @@ export default {
       this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Resolve the conversation on the server (best-effort)
+        // Step 1: Resolve conversation on server (best-effort)
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -102,31 +102,20 @@ export default {
             CONVERSATION_STATUS.PENDING,
           ].includes(this.conversationStatus)
         ) {
-          try {
-            await toggleStatus();
-          } catch (e) {
-            // Continue with exit even if resolve fails
-          }
+          try { await toggleStatus(); } catch (_) {}
         }
 
-        // Step 2: Clear conversation Vuex store
+        // Step 2: Clear Vuex stores
         this.$store.commit('conversation/clearConversations');
 
-        // Step 3: Navigate to prechat-form NOW, before the SDK reloads.
-        // This ensures that if the parent takes a moment to reload the iframe,
-        // the user sees the form and not a blank messages screen.
-        await this.router.replace({ name: 'prechat-form' }).catch(() => {});
-
-        // Step 4: Hide the widget bubble on the parent page
+        // Step 3: Close the widget bubble on the parent page
         this.sendCloseMessage();
 
-        // Step 5: Clear contact store + storage + send exitChat to parent.
-        // clearCurrentUser() is the single place that calls sendMessage({ event: 'exitChat' }).
-        // Do NOT call sendExitChatMessage() here — that would cause a double reload.
+        // Step 4: Clear contact/session so next open is fully fresh
         await this.$store.dispatch('contacts/clearCurrentUser');
 
-      } catch (e) {
-        // Best-effort fallback
+      } catch (_) {
+        // Fallback: still close the widget
         try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
         try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
         this.sendCloseMessage();
@@ -330,7 +319,6 @@ export default {
   .confirm-popover {
     background: #1e293b;
     border-color: rgba(255,255,255,0.1);
-    &::before { background: #1e293b; border-color: rgba(255,255,255,0.1); }
   }
   .confirm-text { color: #f1f5f9; }
   .confirm-sub { color: #94a3b8; }

@@ -19,36 +19,14 @@ export default {
   computed: {
     ...mapGetters({
       availableAgents: 'agent/availableAgents',
-      conversationSize: 'conversation/getConversationSize',
       unreadMessageCount: 'conversation/getUnreadMessageCount',
-      isFetchingList: 'conversation/getIsFetchingList',
     }),
-  },
-  watch: {
-    // When isFetchingList flips from true → false, fetchOldConversations is
-    // done (with data, or with a 404 that cleared the store).
-    // Both conversationSize AND preChatFormEnabled are now settled in Vuex,
-    // so we can make a correct routing decision with no race conditions.
-    isFetchingList(isNowFetching) {
-      if (!isNowFetching && this.$route.name === 'home') {
-        this.startConversation();
-      }
-    },
-  },
-  mounted() {
-    if (this.$route.name === 'home') {
-      // If the fetch already finished before we mounted, decide immediately.
-      // Otherwise the watcher above handles it once the fetch settles.
-      if (!this.isFetchingList) {
-        this.startConversation();
-      }
-    }
   },
   methods: {
     startConversation() {
-      // Go to pre-chat form when form is enabled AND no conversation exists.
-      // Go to messages in all other cases (form disabled, or existing convo).
-      if (this.preChatFormEnabled && !this.conversationSize) {
+      // Always go to pre-chat form if enabled, otherwise straight to messages.
+      // Never auto-resume an existing conversation on load.
+      if (this.preChatFormEnabled) {
         return this.router.replace({ name: 'prechat-form' });
       }
       return this.router.replace({ name: 'messages' });
@@ -61,8 +39,8 @@ export default {
   <div class="z-50 flex flex-col justify-end flex-1 w-full p-4 gap-4">
     <TeamAvailability
       :available-agents="availableAgents"
-      :has-conversation="!!conversationSize"
-      :unread-count="unreadMessageCount"
+      :has-conversation="false"
+      :unread-count="0"
       @start-conversation="startConversation"
     />
     <ArticleContainer />

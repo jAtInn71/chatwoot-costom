@@ -69,9 +69,6 @@ export default {
     },
   },
   watch: {
-    activeCampaign() {
-      this.setCampaignView();
-    },
     isRTL: {
       immediate: true,
       handler(value) {
@@ -85,20 +82,22 @@ export default {
     this.setWidgetColor(widgetColor);
     this.setWidgetColorVariable(widgetColor);
     setHeader(window.authToken);
+
     if (this.isIFrame) {
       this.registerListeners();
       this.sendLoadedEvent();
     } else {
-      this.fetchOldConversations();
+      // Non-iframe mode: always start from home (no session resume)
+      this.clearConversations();
       this.fetchAvailableAgents(websiteToken);
       this.setLocale(getLocale(window.location.search));
     }
+
     if (this.isRNWebView) {
       this.registerListeners();
       this.sendRNWebViewLoadedEvent();
     }
-    this.$store.dispatch('conversationAttributes/getAttributes');
-    this.registerUnreadEvents();
+
     this.registerCampaignEvents();
   },
   methods: {
@@ -116,6 +115,7 @@ export default {
       'resetCampaign',
     ]),
     ...mapActions('agent', ['fetchAvailableAgents']),
+
     setWidgetColorVariable(widgetColor) {
       if (widgetColor) {
         document.documentElement.style.setProperty(
@@ -161,20 +161,7 @@ export default {
         this.$root.$i18n.locale = localeWithoutVariation;
       }
     },
-    registerUnreadEvents() {
-      emitter.on(ON_AGENT_MESSAGE_RECEIVED, () => {
-        const { name: routeName } = this.$route;
-        if ((this.isWidgetOpen || !this.isIFrame) && routeName === 'messages') {
-          this.$store.dispatch('conversation/setUserLastSeen');
-        }
-        this.setUnreadView();
-      });
-      emitter.on(ON_UNREAD_MESSAGE_CLICK, () => {
-        this.router
-          .replace({ name: 'messages' })
-          .then(() => this.unsetUnreadView());
-      });
-    },
+
     registerCampaignEvents() {
       emitter.on(ON_CAMPAIGN_MESSAGE_CLICK, () => {
         if (this.shouldShowPreChatForm) {
@@ -185,7 +172,6 @@ export default {
             campaignId: this.activeCampaign.id,
           });
         }
-        this.unsetUnreadView();
       });
       emitter.on('execute-campaign', campaignDetails => {
         const { customAttributes, campaignId } = campaignDetails;
@@ -198,6 +184,7 @@ export default {
         this.campaignsSnoozedTill = Number(expireBy);
       });
     },
+
     setCampaignView() {
       const { messageCount, activeCampaign } = this;
       const shouldSnoozeCampaign =
@@ -213,38 +200,16 @@ export default {
         });
       }
     },
-    setUnreadView() {
-      const { unreadMessageCount } = this;
-      if (!this.showUnreadMessagesDialog) {
-        this.handleUnreadNotificationDot();
-      } else if (
-        this.isIFrame &&
-        unreadMessageCount > 0 &&
-        !this.isWidgetOpen
-      ) {
-        this.router.replace({ name: 'unread-messages' }).then(() => {
-          this.setIframeHeight(true);
-          IFrameHelper.sendMessage({ event: 'setUnreadMode' });
-        });
-        this.handleUnreadNotificationDot();
-      }
-    },
-    unsetUnreadView() {
-      if (this.isIFrame) {
-        IFrameHelper.sendMessage({ event: 'resetUnreadMode' });
-        this.setIframeHeight(false);
-        this.handleUnreadNotificationDot();
-      }
-    },
+
     handleUnreadNotificationDot() {
-      const { unreadMessageCount } = this;
       if (this.isIFrame) {
         IFrameHelper.sendMessage({
           event: 'handleNotificationDot',
-          unreadMessageCount,
+          unreadMessageCount: 0,
         });
       }
     },
+
     createWidgetEvents(message) {
       const { eventName } = message;
       const isWidgetTriggerEvent = eventName === 'webwidget.triggered';
@@ -255,19 +220,6 @@ export default {
         return;
       }
       this.$store.dispatch('events/create', { name: eventName });
-    },
-
-    // ─── Helper: does the current iframe URL / axios headers have a valid
-    //     auth token? If not, this is a fresh/post-exit session and we must
-    //     NOT call contacts/get because the server will either:
-    //       a) 404 (old bug) — leaving the widget on a blank page, OR
-    //       b) silently create a new anonymous "Visitor" contact
-    //     Either outcome is wrong on a fresh session.
-    // ────────────────────────────────────────────────────────────────────────
-    hasValidAuthToken() {
-      // window.authToken is set by the SDK when re-using an existing session.
-      // On a fresh session (after exitChat) it is empty / undefined.
-      return !!(window.authToken);
     },
 
     registerListeners() {
@@ -281,42 +233,19 @@ export default {
         if (message.event === 'config-set') {
           this.setLocale(message.locale);
           this.setBubbleLabel();
-
-          // setAppConfig must complete BEFORE fetchOldConversations so that
-          // preChatFormEnabled is in Vuex by the time Home.vue mounts and
-          // calls startConversation().
           this.setAppConfig(message);
           this.configReady = true;
 
-          // ── KEY FIX ──────────────────────────────────────────────────────
-          // On a fresh/post-exit session (no auth token):
-          //   1. Clear the Vuex conversation store immediately so
-          //      conversationSize = 0 before Home.vue mounts.
-          //      Without this, stale messages from the previous session
-          //      remain in the store and Home.vue routes to `messages`
-          //      (blank screen) instead of `prechat-form`.
-          //   2. Skip fetchOldConversations entirely — there is no session
-          //      to fetch from, and calling it can return stale data or
-          //      create ghost contacts on the server.
-          //   3. Skip contacts/get — same reason. Calling it with no token
-          //      causes the server to create a new anonymous "Visitor"
-          //      contact, bypassing the pre-chat form entirely.
-          //
-          // On an existing session (token present):
-          //   - Fetch conversations normally so returning users see history.
-          //   - Fetch contact data to populate the store.
-          // ─────────────────────────────────────────────────────────────────
-          if (this.hasValidAuthToken()) {
-            this.fetchOldConversations().then(() => this.setUnreadView());
-            this.$store.dispatch('contacts/get');
-          } else {
-            // No session — wipe any stale Vuex state immediately so
-            // Home.vue sees conversationSize = 0 and routes to prechat-form.
-            this.clearConversations();
-          }
+          // ── ALWAYS START FRESH ──────────────────────────────────────────
+          // Every time the widget loads (open, reload, post-exit), we clear
+          // any previous conversation state and route to the home screen.
+          // The user must click "Start Conversation" and fill the pre-chat
+          // form each time. We never resume a previous session automatically.
+          // ────────────────────────────────────────────────────────────────
+          this.clearConversations();
+          this.$store.commit('conversationAttributes/clearConversationAttributes', null, { root: true });
 
           this.fetchAvailableAgents(websiteToken);
-
           this.setCampaignReadData(message.campaignsSnoozedTill);
 
         } else if (message.event === 'widget-visible') {
@@ -381,24 +310,6 @@ export default {
         } else if (message.event === 'toggle-open') {
           this.$store.dispatch('appConfig/toggleWidgetOpen', message.isOpen);
 
-          const shouldShowMessageView =
-            ['home'].includes(this.$route.name) &&
-            message.isOpen &&
-            this.messageCount &&
-            !this.preChatFormEnabled;
-
-          const shouldShowHomeView =
-            !message.isOpen &&
-            ['unread-messages', 'campaigns'].includes(this.$route.name);
-
-          if (shouldShowMessageView) {
-            this.router.replace({ name: 'messages' });
-          }
-          if (shouldShowHomeView) {
-            this.$store.dispatch('conversation/setUserLastSeen');
-            this.unsetUnreadView();
-            this.router.replace({ name: 'home' });
-          }
           if (!message.isOpen) {
             this.resetCampaign();
           }
@@ -408,6 +319,7 @@ export default {
         }
       });
     },
+
     sendLoadedEvent() {
       IFrameHelper.sendMessage(loadedEventConfig());
     },
@@ -425,14 +337,6 @@ export default {
 
 <template>
   <div
-    v-if="!conversationSize && isFetchingList"
-    class="flex items-center justify-center flex-1 h-full bg-n-background"
-    :class="{ dark: prefersDarkMode }"
-  >
-    <Spinner size="" />
-  </div>
-  <div
-    v-else
     class="flex flex-col justify-end h-full"
     :class="{
       'is-mobile': isMobile,
