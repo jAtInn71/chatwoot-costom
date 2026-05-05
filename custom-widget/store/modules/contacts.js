@@ -22,8 +22,21 @@ export const updateWidgetAuthToken = widgetAuthToken => {
   }
 };
 
-const clearAllChatwootStorage = () => {
-  const explicitKeys = [
+// ─── SESSION STORAGE CLEANUP ───────────────────────────────────────────────
+// This helper wipes all session/auth/conversation data on exit or 404.
+//
+// ⚠️  DO NOT add 'website_token' here.
+//     website_token is NOT session data — it is configuration data embedded
+//     in the iframe URL by the SDK to identify which inbox this widget belongs
+//     to. Every API call the widget makes passes it as a URL query param.
+//     If you delete it, the server receives website_token = NULL and throws:
+//       "Couldn't find Channel::WebWidget with website_token IS NULL → 404"
+//     The SDK re-embeds it on every fresh iframe load, so you never need to
+//     preserve or clear it manually.
+// ──────────────────────────────────────────────────────────────────────────
+const clearSessionStorage = () => {
+  // Explicit session/auth keys to remove
+  const SESSION_KEYS = [
     'cwc-unique-id',
     'cwc-session',
     'cw_contact_uuid',
@@ -38,24 +51,27 @@ const clearAllChatwootStorage = () => {
     'cw_auth_token',
     'widget_auth_token',
   ];
-  explicitKeys.forEach(k => {
+
+  SESSION_KEYS.forEach(k => {
     localStorage.removeItem(k);
     sessionStorage.removeItem(k);
   });
 
+  // Pattern-based sweep — keep chatwoot_user_data for form pre-fill
   [localStorage, sessionStorage].forEach(storage => {
     Object.keys(storage)
-      .filter(k =>
-        k.includes('chatwoot') ||
-        k.includes('cw_') ||
-        k.includes('cwc') ||
-        k.includes('widget_auth')
+      .filter(
+        k =>
+          (k.includes('chatwoot') ||
+            k.includes('cw_') ||
+            k.includes('cwc') ||
+            k.includes('widget_auth')) &&
+          k !== 'chatwoot_user_data'
       )
-      // PRESERVE chatwoot_user_data - don't delete it
-      .filter(k => k !== 'chatwoot_user_data')
       .forEach(k => storage.removeItem(k));
   });
 
+  // Clear session cookies
   document.cookie.split(';').forEach(cookie => {
     const name = cookie.split('=')[0].trim();
     if (
@@ -69,12 +85,28 @@ const clearAllChatwootStorage = () => {
     }
   });
 
-  // Clear cw_conversation from the iframe's own URL query params
+  // Strip session params from the iframe URL.
+  // ⚠️  'website_token' is intentionally NOT in this list — see note above.
   try {
     const url = new URL(window.location.href);
-    url.searchParams.delete('cw_conversation');
+    ['cw_conversation', 'cw_contact', 'cw_d'].forEach(p =>
+      url.searchParams.delete(p)
+    );
+    // Also sweep any remaining cw_* / cwc* params (but not website_token)
+    [...url.searchParams.keys()]
+      .filter(k => k.startsWith('cw_') || k.startsWith('cwc'))
+      .forEach(k => url.searchParams.delete(k));
     window.history.replaceState({}, '', url.toString());
   } catch (_) {}
+};
+
+const EMPTY_USER = {
+  has_email: false,
+  has_phone_number: false,
+  identifier: null,
+  name: '',
+  email: '',
+  phone_number: '',
 };
 
 export const getters = {
@@ -89,50 +121,19 @@ export const actions = {
       const { data } = await ContactsAPI.get();
       commit(SET_CURRENT_USER, data);
     } catch (error) {
-      // If 404, the contact/conversation doesn't exist or is invalid
-      // This happens when:
-      //   1. User exits chat (conversation marked as resolved/deleted on server)
-      //   2. Widget is reopened and tries to fetch the old conversation
-      //   3. API returns 404 because that conversation no longer exists
+      // 404 means the contact/conversation was deleted (e.g. after exit-chat).
+      // Clear stale session data and reset to a blank user so the pre-chat
+      // form is shown on next open.
       if (error.response?.status === 404) {
-        console.warn('⚠️ Contact/Conversation not found (404)');
-        console.log('   Clearing ALL stale session data to force fresh start...');
-        
-        // Clear all conversation/contact session data (sessionStorage)
-        const sessionKeys = Object.keys(sessionStorage);
-        sessionKeys.forEach(k => {
-          if (k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')) {
-            console.log(`   Clearing: ${k}`);
-            sessionStorage.removeItem(k);
-          }
-        });
-        
-        // Also clear from localStorage (except user_data)
-        const localKeys = Object.keys(localStorage);
-        localKeys.forEach(k => {
-          if ((k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')) && k !== 'chatwoot_user_data') {
-            console.log(`   Clearing: ${k}`);
-            localStorage.removeItem(k);
-          }
-        });
-        
-        console.log('✅ Stale data cleared - widget ready for fresh start');
-        
-        // Reset contact state to empty (will show pre-chat form)
-        commit(SET_CURRENT_USER, {
-          has_email: false,
-          has_phone_number: false,
-          identifier: null,
-          name: '',
-          email: '',
-          phone_number: '',
-        });
+        clearSessionStorage();
+        removeHeader('X-Auth-Token');
+        commit(SET_CURRENT_USER, EMPTY_USER);
       }
-      // Ignore all other errors too
+      // All other errors are silently ignored.
     }
   },
 
-  // Load user data that was saved during exitChat
+  // Load user data saved during a previous session so the form can be pre-filled.
   loadSavedUserData: ({ commit }) => {
     try {
       const savedUserData = localStorage.getItem('chatwoot_user_data');
@@ -150,7 +151,7 @@ export const actions = {
         }
       }
     } catch (error) {
-      // Ignore error if localStorage is corrupted
+      // Ignore corrupted localStorage
     }
   },
 
@@ -225,115 +226,39 @@ export const actions = {
     }
   },
 
-  clearCurrentUser: ({ commit, state }) => {
-    console.log('👤 contacts/clearCurrentUser action triggered');
-    // Reset conversation state but KEEP user data for next session
-    // User data is saved in localStorage and will be shown on next open
-    commit(SET_CURRENT_USER, {
-      has_email: false,
-      has_phone_number: false,
-      identifier: null,
-      name: '',
-      email: '',
-      phone_number: '',
-    });
+  /**
+   * Called by HeaderActions.endChat().
+   *
+   * Order of operations:
+   *   1. Reset Vuex contact state to blank
+   *   2. Remove axios auth headers
+   *   3. Clear session/auth storage (keep chatwoot_user_data for form pre-fill)
+   *   4. Send exitChat to parent — SDK destroys + reloads the iframe
+   *
+   * HeaderActions navigates to prechat-form BEFORE calling this action,
+   * so the user never sees the blank messages screen during the reload.
+   */
+  clearCurrentUser: ({ commit }) => {
+    // 1. Reset Vuex contact state
+    commit(SET_CURRENT_USER, EMPTY_USER);
 
-    // Remove axios auth header
+    // 2. Remove axios auth headers
     removeHeader('X-Auth-Token');
+    removeHeader('api_access_token');
+    removeHeader('user_access_token');
 
-    // Wipe conversation-related storage only (keep user_data for form pre-fill)
-    const explicitKeys = [
-      'cwc-unique-id',
-      'cwc-session',
-      'cw_contact_uuid',
-      'cw_conversation',
-      'cw_conversation_id',
-      'chatwoot_contact_id',
-      'chatwoot_conversation_id',
-      'chatwootContactIdentity',
-      'user_color',
-      'user_uuid',
-      'cw_d',
-      'cw_auth_token',
-      'widget_auth_token',
-    ];
-    explicitKeys.forEach(k => {
-      localStorage.removeItem(k);
-      sessionStorage.removeItem(k);
-    });
+    // 3. Wipe session/auth storage — website_token is preserved (see clearSessionStorage note)
+    clearSessionStorage();
 
-    [localStorage, sessionStorage].forEach(storage => {
-      Object.keys(storage)
-        .filter(k =>
-          k.includes('chatwoot') ||
-          k.includes('cw_') ||
-          k.includes('cwc') ||
-          k.includes('widget_auth')
-        )
-        // PRESERVE chatwoot_user_data so form can be pre-filled on reopen
-        .filter(k => k !== 'chatwoot_user_data')
-        .forEach(k => storage.removeItem(k));
-    });
-
-    document.cookie.split(';').forEach(cookie => {
-      const name = cookie.split('=')[0].trim();
-      if (
-        name.includes('chatwoot') ||
-        name.includes('cw_') ||
-        name.includes('cwc') ||
-        name === 'cw_d'
-      ) {
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${location.hostname}`;
-      }
-    });
-
-    try {
-      const url = new URL(window.location.href);
-      ['cw_conversation', 'cw_contact', 'cw_d', 'website_token'].forEach(p =>
-        url.searchParams.delete(p)
-      );
-      [...url.searchParams.keys()]
-        .filter(k => k.startsWith('cw_') || k.startsWith('cwc'))
-        .forEach(k => url.searchParams.delete(k));
-      window.history.replaceState({}, '', url.toString());
-    } catch (_) {}
-
-    console.log('✅ Contact state cleared (user data preserved in localStorage for next session)');
-
-    // Tell the parent page to fully destroy + reload the SDK
+    // 4. Tell the parent to fully tear down and reload the SDK iframe.
     sendMessage({ event: 'exitChat' });
   },
 
   resetOnApiError: ({ commit }) => {
-    // Called when API returns 404 — clear stale session and reset to pre-chat
-    console.warn('🔄 Resetting widget due to stale conversation (404)');
-    
-    // Clear conversation state
-    commit(SET_CURRENT_USER, {
-      has_email: false,
-      has_phone_number: false,
-      identifier: null,
-      name: '',
-      email: '',
-      phone_number: '',
-    });
-
-    // Clear stale session/conversation IDs
-    const staleKeys = [
-      'cw_contact_uuid',
-      'cw_conversation',
-      'cw_conversation_id',
-      'chatwoot_contact_id',
-      'chatwoot_conversation_id',
-      'cw_d',
-    ];
-    
-    [localStorage, sessionStorage].forEach(storage => {
-      staleKeys.forEach(k => storage.removeItem(k));
-    });
-
-    console.log('✅ Widget reset - user can now start fresh conversation');
+    // Called when an API call returns 404 — clear stale session and reset.
+    clearSessionStorage();
+    removeHeader('X-Auth-Token');
+    commit(SET_CURRENT_USER, EMPTY_USER);
   },
 };
 
