@@ -94,7 +94,9 @@ export default {
       this.showConfirmExitChat = false;
 
       try {
-        // Step 1: Resolve conversation on server (best-effort)
+        // ── STEP 1: RESOLVE the conversation (intentional exit by user).
+        // This is different from browser-close/reload which goes to PENDING.
+        // toggleStatus() toggles open→resolved (or pending/snoozed→resolved).
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -105,35 +107,42 @@ export default {
           try { await toggleStatus(); } catch (_) {}
         }
 
-        // Step 2: Clear saved user data so pre-chat form is blank next time
-        try {
-          localStorage.removeItem('chatwoot_user_data');
-          sessionStorage.clear();
-        } catch (_) {}
-
-        // Step 3: Clear Vuex stores
-        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
-        try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
-
-        // Step 4: Close the widget bubble on the parent page
-        this.sendCloseMessage();
-
-        // Step 5: Reload the iframe so next open is 100% fresh
-        // Small delay so the closeWindow message reaches the parent first
-        setTimeout(() => {
-          window.location.reload();
-        }, 300);
+        // ── STEP 2: Tell the parent page to do a full SDK reset + reload.
+        // The parent's resetAndReload() (index.html) will:
+        //   • Destroy the SDK from the DOM
+        //   • Clear all Chatwoot localStorage / sessionStorage / cookies
+        //   • Reload the page → fresh bubble + pre-chat form (same as New Chat)
+        //
+        // We send 'exitChat' — parent already listens for this event.
+        // We do NOT clear storage from inside the iframe to avoid racing
+        // with the parent's own cleanup on reload.
+        if (IFrameHelper.isIFrame()) {
+          IFrameHelper.sendMessage({ event: 'exitChat' });
+        } else if (RNHelper.isRNWebView()) {
+          RNHelper.sendMessage({ type: 'exit-chat' });
+        } else {
+          // Non-iframe / popout fallback — handle reset locally
+          this._localFallbackExit();
+        }
 
       } catch (_) {
-        // Fallback
-        try { localStorage.removeItem('chatwoot_user_data'); } catch (_) {}
-        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
-        try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
-        this.sendCloseMessage();
-        setTimeout(() => { window.location.reload(); }, 300);
+        // Safety net: always try to fire exitChat so parent can recover
+        try {
+          if (IFrameHelper.isIFrame()) {
+            IFrameHelper.sendMessage({ event: 'exitChat' });
+          }
+        } catch (__) {}
       } finally {
         this.isEndingChat = false;
       }
+    },
+
+    // Only used when the widget is NOT inside an iframe (rare / popout mode).
+    async _localFallbackExit() {
+      try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
+      try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
+      this.sendCloseMessage();
+      setTimeout(() => { window.location.reload(); }, 300);
     },
   },
 };
