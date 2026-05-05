@@ -37,6 +37,7 @@ export default {
       locale: this.$root.$i18n.locale,
       hasErrorInPhoneInput: false,
       message: '',
+      // Always start blank — never pre-fill from previous session
       formValues: {},
       labels: {
         emailAddress: 'EMAIL_ADDRESS',
@@ -81,24 +82,8 @@ export default {
       return this.preChatFormEnabled ? this.options.preChatFields : [];
     },
     filteredPreChatFields() {
-      // ── CHANGED ──────────────────────────────────────────────────────────
-      // Original code hid fullName / emailAddress / phoneNumber fields when
-      // currentUser.has_email / has_phone_number / identifier were set.
-      // This caused the old contact name to persist because:
-      //   1. User fills form as "Nayan", starts chat
-      //   2. User exits chat (endChat clears conversations but Vuex contact
-      //      state was NOT fully cleared in the old code)
-      //   3. User opens widget again → filteredPreChatFields hides fullName
-      //      because currentUser.has_email was still true from old session
-      //   4. Form submits without a new name → webhook gets stale name
-      //
-      // Fix: Always show all enabled fields regardless of currentUser state.
-      // endChat() in HeaderActions now calls contacts/clearCurrentUser which
-      // resets has_email / has_phone_number / identifier to false/null,
-      // but we also remove the hiding logic here as a safety net so that
-      // even if clearCurrentUser is not called for any reason, the form
-      // will still show all fields to the user.
-      // ─────────────────────────────────────────────────────────────────────
+      // Always show all enabled fields — never hide based on currentUser state.
+      // Each session is fresh so we always need full input from the user.
       return this.preChatFields;
     },
     enabledPreChatFields() {
@@ -136,10 +121,6 @@ export default {
       });
       return contactAttributes;
     },
-  },
-  mounted() {
-    // Pre-fill form with saved user data from previous session
-    this.loadSavedUserData();
   },
   methods: {
     labelClass(input) {
@@ -234,44 +215,18 @@ export default {
       return {};
     },
     onSubmit() {
-      console.log('\n' + '='.repeat(60));
-      console.log('📝 PRE-CHAT FORM SUBMITTED');
-      console.log('='.repeat(60));
-      
       const { emailAddress, fullName, phoneNumber, message } = this.formValues;
-      
-      // Clear any stale session data from previous conversation
-      console.log('   Clearing stale session data from previous conversation...');
-      const staleKeys = [
-        'cw_contact_uuid',
-        'cw_conversation_id',
-        'cw_conversation',
-        'chatwoot_conversation_id',
-        'chatwootContactIdentity',
-        'cw_d',
-        'cw_auth_token',
-      ];
-      staleKeys.forEach(k => {
-        if (sessionStorage.getItem(k)) {
-          console.log(`   Removed: ${k}`);
-          sessionStorage.removeItem(k);
-        }
-      });
-      
-      // Save user data to localStorage for next session
+
       const userData = {
         name: fullName,
         email: emailAddress,
         phone_number: phoneNumber,
         submitted_at: new Date().toISOString(),
       };
-      localStorage.setItem('chatwoot_user_data', JSON.stringify(userData));
-      console.log('   ✅ User data saved to localStorage');
-      
-      // Send to n8n webhook silently (no message in widget)
+
+      // Send to n8n webhook silently (fire and forget)
       this.sendToN8n(userData);
-      
-      console.log(`   Emitting submitPreChat event with: name="${fullName}", email="${emailAddress}"`);
+
       this.$emit('submitPreChat', {
         fullName,
         phoneNumber,
@@ -281,39 +236,12 @@ export default {
         conversationCustomAttributes: this.conversationCustomAttributes,
         contactCustomAttributes: this.contactCustomAttributes,
       });
-      console.log('✅ Form submission complete\n');
-    },
-    loadSavedUserData() {
-      try {
-        console.log('📝 Form.vue mounted - checking for saved user data...');
-        const savedData = localStorage.getItem('chatwoot_user_data');
-        if (savedData) {
-          const { name = '', email = '', phone_number = '' } = JSON.parse(savedData);
-          this.formValues = {
-            fullName: name,
-            emailAddress: email,
-            phoneNumber: phone_number,
-            message: '',
-          };
-          console.log('✅ Form pre-filled with saved data:', { name, email, phone_number });
-        } else {
-          console.log('ℹ️ No saved user data found - showing blank form');
-        }
-      } catch (e) {
-        console.warn('⚠️ Could not load saved user data:', e.message);
-      }
     },
     async sendToN8n(userData) {
       try {
-        // Read n8n webhook URL from dashboard widget options
-        // Admins set this in: Inbox Settings → [Your Inbox] → Configurations → Custom Settings
         const n8nWebhookUrl = this.options?.n8n_webhook_url || this.options?.webhook_url;
-        
-        if (!n8nWebhookUrl) {
-          console.log('⏭️ n8n webhook not configured in dashboard - skipping');
-          return;
-        }
-        
+        if (!n8nWebhookUrl) return;
+
         const payload = {
           source: 'chatwoot-widget',
           type: 'prechat_form_submission',
@@ -321,21 +249,14 @@ export default {
           website_token: window.chatwootWebChannel?.websiteToken || '',
           timestamp: new Date().toISOString(),
         };
-        
-        const response = await fetch(n8nWebhookUrl, {
+
+        await fetch(n8nWebhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        
-        if (response.ok) {
-          console.log('✅ Data sent to n8n webhook');
-        } else {
-          console.warn('⚠️ n8n webhook returned status:', response.status);
-        }
-      } catch (error) {
-        // Silent fail — don't break the chat flow
-        console.warn('⚠️ n8n webhook error (silent):', error.message);
+      } catch (_) {
+        // Silent fail — never break the chat flow
       }
     },
   },
@@ -343,7 +264,6 @@ export default {
 </script>
 
 <template>
-  <!-- hide the default submit button for now -->
   <FormKit
     v-model="formValues"
     type="form"
@@ -360,9 +280,6 @@ export default {
       v-dompurify-html="formatMessage(headerMessage, false)"
       class="mb-4 text-base leading-5 text-n-slate-12 [&>p>.link]:text-n-blue-11 [&>p>.link]:hover:underline"
     />
-    <!-- Why do the v-bind shenanigan? Because Formkit API is really bad.
-    If we just pass the options as is even with null or undefined or false,
-    it assumes we are trying to make a multicheckbox. This is the best we have for now -->
     <FormKit
       v-for="item in enabledPreChatFields"
       :key="item.name"

@@ -105,20 +105,32 @@ export default {
           try { await toggleStatus(); } catch (_) {}
         }
 
-        // Step 2: Clear Vuex stores
-        this.$store.commit('conversation/clearConversations');
+        // Step 2: Clear saved user data so pre-chat form is blank next time
+        try {
+          localStorage.removeItem('chatwoot_user_data');
+          sessionStorage.clear();
+        } catch (_) {}
 
-        // Step 3: Close the widget bubble on the parent page
+        // Step 3: Clear Vuex stores
+        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
+        try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
+
+        // Step 4: Close the widget bubble on the parent page
         this.sendCloseMessage();
 
-        // Step 4: Clear contact/session so next open is fully fresh
-        await this.$store.dispatch('contacts/clearCurrentUser');
+        // Step 5: Reload the iframe so next open is 100% fresh
+        // Small delay so the closeWindow message reaches the parent first
+        setTimeout(() => {
+          window.location.reload();
+        }, 300);
 
       } catch (_) {
-        // Fallback: still close the widget
+        // Fallback
+        try { localStorage.removeItem('chatwoot_user_data'); } catch (_) {}
         try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
         try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
         this.sendCloseMessage();
+        setTimeout(() => { window.location.reload(); }, 300);
       } finally {
         this.isEndingChat = false;
       }
@@ -319,6 +331,7 @@ export default {
   .confirm-popover {
     background: #1e293b;
     border-color: rgba(255,255,255,0.1);
+    &::before { background: #1e293b; border-color: rgba(255,255,255,0.1); }
   }
   .confirm-text { color: #f1f5f9; }
   .confirm-sub { color: #94a3b8; }
