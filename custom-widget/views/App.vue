@@ -40,8 +40,6 @@ export default {
     return {
       isMobile: false,
       campaignsSnoozedTill: undefined,
-      // Track whether the initial config has been applied.
-      // Used to gate route decisions that depend on preChatFormEnabled.
       configReady: false,
     };
   },
@@ -258,6 +256,20 @@ export default {
       }
       this.$store.dispatch('events/create', { name: eventName });
     },
+
+    // ─── Helper: does the current iframe URL / axios headers have a valid
+    //     auth token? If not, this is a fresh/post-exit session and we must
+    //     NOT call contacts/get because the server will either:
+    //       a) 404 (old bug) — leaving the widget on a blank page, OR
+    //       b) silently create a new anonymous "Visitor" contact
+    //     Either outcome is wrong on a fresh session.
+    // ────────────────────────────────────────────────────────────────────────
+    hasValidAuthToken() {
+      // window.authToken is set by the SDK when re-using an existing session.
+      // On a fresh session (after exitChat) it is empty / undefined.
+      return !!(window.authToken);
+    },
+
     registerListeners() {
       const { websiteToken } = window.chatwootWebChannel;
       window.addEventListener('message', e => {
@@ -270,28 +282,35 @@ export default {
           this.setLocale(message.locale);
           this.setBubbleLabel();
 
-          // ─── KEY FIX ───────────────────────────────────────────────────────
           // setAppConfig must complete BEFORE fetchOldConversations so that
           // preChatFormEnabled is in Vuex by the time Home.vue mounts and
-          // calls startConversation(). Previously these ran concurrently,
-          // meaning Home.vue could read preChatFormEnabled=undefined and
-          // fall through to the `messages` route on second open.
-          // ──────────────────────────────────────────────────────────────────
+          // calls startConversation().
           this.setAppConfig(message);
           this.configReady = true;
 
-          // Now fetch conversations. On a fresh/post-exit session the token
-          // is gone so this will 404 → clearConversations → conversationSize
-          // stays 0 → Home.vue routes to prechat-form correctly.
+          // Fetch conversations. On a fresh/post-exit session the token is
+          // gone so this will either be empty or return nothing useful.
+          // The 404 handler in conversation/fetchOldConversations clears the
+          // store → conversationSize stays 0 → Home.vue routes to prechat-form.
           this.fetchOldConversations().then(() => this.setUnreadView());
           this.fetchAvailableAgents(websiteToken);
 
-          // contacts/get is only useful when a valid auth token exists.
-          // On a fresh session (post-exitChat) there is no token yet, so
-          // this will 404. That 404 is handled in contacts/get by clearing
-          // stale storage and resetting the user — which is fine, but we
-          // don't need to block anything on it.
-          this.$store.dispatch('contacts/get');
+          // ── KEY FIX ──────────────────────────────────────────────────────
+          // ONLY call contacts/get when a valid auth token exists (i.e. the
+          // user has an existing session from a previous visit).
+          //
+          // If we call it on a fresh/post-exit session (no token), the server
+          // creates a new anonymous "Visitor" contact and returns a session,
+          // which makes the widget skip the pre-chat form and show a blank
+          // messages screen instead.
+          //
+          // On a fresh session, the pre-chat form submission handles contact
+          // creation itself via conversation/createConversation. We don't need
+          // to pre-load any contact data here.
+          // ─────────────────────────────────────────────────────────────────
+          if (this.hasValidAuthToken()) {
+            this.$store.dispatch('contacts/get');
+          }
 
           this.setCampaignReadData(message.campaignsSnoozedTill);
 
@@ -357,26 +376,11 @@ export default {
         } else if (message.event === 'toggle-open') {
           this.$store.dispatch('appConfig/toggleWidgetOpen', message.isOpen);
 
-          // ─── KEY FIX ───────────────────────────────────────────────────────
-          // Original code routed to `messages` when:
-          //   route=home AND isOpen AND messageCount > 0
-          //
-          // The problem: on second open after exit-chat, messageCount is 0
-          // (store is fresh) but `fetchOldConversations` is still in-flight.
-          // Home.vue mounts during this window and calls startConversation().
-          // If preChatFormEnabled wasn't in Vuex yet (race with setAppConfig),
-          // it fell through to `messages`.
-          //
-          // Fix: Only route to `messages` from here if there is actually a
-          // conversation AND the pre-chat form is not required. If the pre-chat
-          // form should show, let Home.vue handle the routing — it checks
-          // conversationSize which is 0 until fetchOldConversations resolves.
-          // ──────────────────────────────────────────────────────────────────
           const shouldShowMessageView =
             ['home'].includes(this.$route.name) &&
             message.isOpen &&
             this.messageCount &&
-            !this.preChatFormEnabled; // ← Don't override Home.vue when form is needed
+            !this.preChatFormEnabled;
 
           const shouldShowHomeView =
             !message.isOpen &&
