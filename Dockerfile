@@ -87,3 +87,7 @@ LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLab
 ENV VITE_ELEVENLABS_AGENT_ID=${VITE_ELEVENLABS_AGENT_ID}
 ENV VITE_ELEVENLABS_VOICE_ID=${VITE_ELEVENLABS_VOICE_ID}
 ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}
+
+COPY custom-widget/helpers/axios.js app/javascript/widget/helpers/axios.js
+COPY custom-widget/api/contacts.js app/javascript/widget/api/contacts.js
+COPY custom-widget/api/conversation.js app/javascript/widget/api/conversation.js
