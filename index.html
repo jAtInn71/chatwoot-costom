@@ -331,16 +331,32 @@
     // Widget's "Exit Chat" button → resolves conversation → fires exitChat postMessage
     // Parent catches it here → destroys SDK + clears storage + reloads page.
     // (Resolve already happened inside the iframe via toggleStatus().)
-    window.addEventListener('message', function (e) {
-      console.log('📨 Message received from iframe:', e.data);
+    //
+    // Chatwoot's widget posts messages as STRINGS with a "chatwoot-widget:" prefix,
+    // not as plain objects. We must parse that wire format here, otherwise the
+    // exit event from the widget's Exit Chat button is never recognized.
+    const WOOT_PREFIX = 'chatwoot-widget:';
+    function parseWidgetMessage(data) {
+      if (data && typeof data === 'object') return data;
+      if (typeof data === 'string' && data.indexOf(WOOT_PREFIX) === 0) {
+        try { return JSON.parse(data.slice(WOOT_PREFIX.length)); } catch (_) { return null; }
+      }
+      return null;
+    }
 
-      if (e.data && (e.data.event === 'exitChat' || e.data.type === 'exit-chat')) {
+    window.addEventListener('message', function (e) {
+      const payload = parseWidgetMessage(e.data);
+      if (!payload) return;
+
+      console.log('📨 Message received from iframe:', payload);
+
+      if (payload.event === 'exitChat' || payload.type === 'exit-chat') {
         console.log('🎯 Exit Chat event from widget — running full reset (conversation already resolved by widget)');
         // resolve: false — the widget already called toggleStatus() before sending this event
         resetAndReload('widgetExit', { resolve: false });
       }
 
-      if (e.data && e.data.event === 'closeWindow') {
+      if (payload.event === 'closeWindow') {
         console.log('📍 Close Window event — just closing bubble');
       }
     });

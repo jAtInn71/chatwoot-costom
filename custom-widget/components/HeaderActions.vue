@@ -95,8 +95,7 @@ export default {
 
       try {
         // ── STEP 1: RESOLVE the conversation (intentional exit by user).
-        // This is different from browser-close/reload which goes to PENDING.
-        // toggleStatus() toggles open→resolved (or pending/snoozed→resolved).
+        // Must happen BEFORE clearing auth headers in step 2.
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -107,21 +106,30 @@ export default {
           try { await toggleStatus(); } catch (_) {}
         }
 
-        // ── STEP 2: Tell the parent page to do a full SDK reset + reload.
-        // The parent's resetAndReload() (index.html) will:
-        //   • Destroy the SDK from the DOM
-        //   • Clear all Chatwoot localStorage / sessionStorage / cookies
-        //   • Reload the page → fresh bubble + pre-chat form (same as New Chat)
+        // ── STEP 2: Wipe iframe-domain auth/storage/cookies, then reload iframe.
+        // We deliberately do NOT depend on parent-page code, so this works on
+        // ANY site that embeds the Chatwoot SDK (clients don't need to add a
+        // custom postMessage listener).
         //
-        // We send 'exitChat' — parent already listens for this event.
-        // We do NOT clear storage from inside the iframe to avoid racing
-        // with the parent's own cleanup on reload.
+        // contacts/clearCurrentUser:
+        //   • resets Vuex contact state to blank
+        //   • removes auth headers
+        //   • clearSessionStorage() — wipes localStorage/sessionStorage/cookies
+        //     scoped to the Chatwoot iframe origin (the only place that can
+        //     clear them, since the parent page is on a different origin)
+        //   • posts { event: 'exitChat' } to the parent (harmless if unhandled)
+        //
+        // After that, reloading window.location refreshes the iframe contents
+        // only. The iframe re-requests its config without any contact cookies
+        // → Chatwoot creates a brand-new contact → contact_created fires →
+        // n8n receives the new form data on every Exit Chat cycle.
         if (IFrameHelper.isIFrame()) {
-          IFrameHelper.sendMessage({ event: 'exitChat' });
+          this.$store.dispatch('contacts/clearCurrentUser');
+          // Small delay so the postMessage and storage writes flush before reload
+          setTimeout(() => { window.location.reload(); }, 50);
         } else if (RNHelper.isRNWebView()) {
           RNHelper.sendMessage({ type: 'exit-chat' });
         } else {
-          // Non-iframe / popout fallback — handle reset locally
           this._localFallbackExit();
         }
 
