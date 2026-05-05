@@ -76,6 +76,7 @@ COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/conf
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
 COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
 COPY custom-widget/views/App.vue /app/app/javascript/widget/App.vue
+COPY custom-widget/views/PreChatForm.vue /app/app/javascript/widget/views/PreChatForm.vue
 
 # Backend controller patches
 COPY custom-widget/patches/conversations_controller.rb /app/app/controllers/api/v1/widget/conversations_controller.rb
