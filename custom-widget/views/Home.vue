@@ -4,6 +4,7 @@ import { mapGetters } from 'vuex';
 import { useRouter } from 'vue-router';
 import configMixin from 'widget/mixins/configMixin';
 import ArticleContainer from '../components/pageComponents/Home/Article/ArticleContainer.vue';
+
 export default {
   name: 'Home',
   components: {
@@ -20,24 +21,33 @@ export default {
       availableAgents: 'agent/availableAgents',
       conversationSize: 'conversation/getConversationSize',
       unreadMessageCount: 'conversation/getUnreadMessageCount',
-      currentUser: 'contacts/getCurrentUser',
+      isFetchingList: 'conversation/getIsFetchingList',
     }),
+  },
+  watch: {
+    // When isFetchingList flips from true → false, fetchOldConversations is
+    // done (with data, or with a 404 that cleared the store).
+    // Both conversationSize AND preChatFormEnabled are now settled in Vuex,
+    // so we can make a correct routing decision with no race conditions.
+    isFetchingList(isNowFetching) {
+      if (!isNowFetching && this.$route.name === 'home') {
+        this.startConversation();
+      }
+    },
   },
   mounted() {
     if (this.$route.name === 'home') {
-      this.startConversation();
+      // If the fetch already finished before we mounted, decide immediately.
+      // Otherwise the watcher above handles it once the fetch settles.
+      if (!this.isFetchingList) {
+        this.startConversation();
+      }
     }
   },
   methods: {
     startConversation() {
-      // If pre-chat form is enabled AND there is no active conversation,
-      // always show the pre-chat form. This covers:
-      //   - First visit (no conversation at all)
-      //   - After exit-chat (conversation cleared, storage wiped)
-      //   - After 404 on fetchOldConversations (store stays empty)
-      // We do NOT check currentUser here because the contacts/get fetch
-      // is async and may not have resolved yet — conversationSize is the
-      // only reliable synchronous signal we need.
+      // Go to pre-chat form when form is enabled AND no conversation exists.
+      // Go to messages in all other cases (form disabled, or existing convo).
       if (this.preChatFormEnabled && !this.conversationSize) {
         return this.router.replace({ name: 'prechat-form' });
       }
@@ -55,7 +65,6 @@ export default {
       :unread-count="unreadMessageCount"
       @start-conversation="startConversation"
     />
-
     <ArticleContainer />
   </div>
 </template>

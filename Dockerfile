@@ -18,9 +18,11 @@ COPY custom-widget/store/index.js app/javascript/widget/store/index.js
 COPY custom-widget/store/modules/appConfig.js app/javascript/widget/store/modules/appConfig.js
 COPY custom-widget/store/modules/elevenlabsVoice.js app/javascript/widget/store/modules/elevenlabsVoice.js
 COPY custom-widget/store/modules/contacts.js app/javascript/widget/store/modules/contacts.js
+COPY custom-widget/store/modules/conversation/actions.js app/javascript/widget/store/modules/conversation/actions.js
 COPY custom-widget/patches/configMixin.js app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json app/javascript/widget/i18n/locale/en.json
 COPY custom-widget/views/Home.vue app/javascript/widget/views/Home.vue
+COPY custom-widget/views/App.vue app/javascript/widget/App.vue
 
 ARG VITE_ELEVENLABS_AGENT_ID=agent_6601kc1fqeecfc88s7d52jde0syq
 ARG VITE_ELEVENLABS_VOICE_ID=
@@ -69,9 +71,11 @@ COPY custom-widget/store/index.js /app/app/javascript/widget/store/index.js
 COPY custom-widget/store/modules/appConfig.js /app/app/javascript/widget/store/modules/appConfig.js
 COPY custom-widget/store/modules/elevenlabsVoice.js /app/app/javascript/widget/store/modules/elevenlabsVoice.js
 COPY custom-widget/store/modules/contacts.js /app/app/javascript/widget/store/modules/contacts.js
+COPY custom-widget/store/modules/conversation/actions.js /app/app/javascript/widget/store/modules/conversation/actions.js
 COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
 COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
+COPY custom-widget/views/App.vue /app/app/javascript/widget/App.vue
 
 # Backend controller patches
 COPY custom-widget/patches/conversations_controller.rb /app/app/controllers/api/v1/widget/conversations_controller.rb
@@ -80,7 +84,6 @@ COPY custom-widget/patches/website_token_helper.rb /app/app/controllers/concerns
 LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + Persistent User Data"
 LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and persistent user data across sessions"
 
-# Environment variables for customization
 ENV VITE_ELEVENLABS_AGENT_ID=${VITE_ELEVENLABS_AGENT_ID}
 ENV VITE_ELEVENLABS_VOICE_ID=${VITE_ELEVENLABS_VOICE_ID}
 ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}
