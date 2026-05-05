@@ -71,7 +71,7 @@ COPY custom-widget/store/index.js /app/app/javascript/widget/store/index.js
 COPY custom-widget/store/modules/appConfig.js /app/app/javascript/widget/store/modules/appConfig.js
 COPY custom-widget/store/modules/elevenlabsVoice.js /app/app/javascript/widget/store/modules/elevenlabsVoice.js
 COPY custom-widget/store/modules/contacts.js /app/app/javascript/widget/store/modules/contacts.js
-COPY custom-widget/store/modules/conversation/actions.js /app/app/javascript/widget/store/modules/conversation/actions.js
+COPY custom-widget/components/actions.js /app/app/javascript/widget/store/modules/conversation/actions.js
 COPY custom-widget/patches/configMixin.js /app/app/javascript/widget/mixins/configMixin.js
 COPY custom-widget/i18n/en.json /app/app/javascript/widget/i18n/locale/en.json
 COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
