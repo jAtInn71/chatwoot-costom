@@ -91,11 +91,11 @@
     <div class="button-group">
       <button class="btn-new-chat" onclick="newChat()">🔄 New Chat</button>
       <!--
-        "Exit Chat" on this page does the same full reset as New Chat.
-        The real per-conversation Exit button lives inside the widget header (HeaderActions.vue).
-        Both paths funnel into resetAndReload() so behaviour is identical.
+        "Exit Chat" on this page does the same full reset as the widget's Exit Chat button:
+        resolve conversation → destroy SDK → clear storage → reload.
+        The widget's "Exit Chat" button fires an 'exitChat' postMessage which lands here.
       -->
-      <button class="btn-exit-chat" onclick="resetAndReload()">❌ Exit Chat</button>
+      <button class="btn-exit-chat" onclick="exitChatAndReset()">❌ Exit Chat</button>
     </div>
     <div class="widget-status">
       <p><span class="dot active"></span><span id="widget-status-text">Widget is ready</span></p>
@@ -107,6 +107,11 @@
     const WEBSITE_TOKEN = "RgPAJW8PwMCZwCkwMZkgiJkG";
     const ACCOUNT_ID    = 7;
     const API_TOKEN     = "8MRk5RAWWMxDZRukCSjT3PVw";
+
+    // ── Flag set by resetAndReload() so beforeunload knows NOT to fire pending ─
+    // When we intentionally reload (Exit Chat / New Chat), we mark this flag.
+    // That way the beforeunload handler won't double-call setPending.
+    let _intentionalReload = false;
 
     window.chatwootSettings = {
       position: "right",
@@ -131,13 +136,8 @@
 
     // ── Clear ALL Chatwoot storage ────────────────────────────────────────────
     function clearAllChatwootData() {
-      // Save user data before clearing
-      const userDataToPreserve = localStorage.getItem('chatwoot_user_data');
-      
       Object.keys(localStorage)
         .filter(k => k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc'))
-        // Don't delete chatwoot_user_data - we need to preserve it for next session
-        .filter(k => k !== 'chatwoot_user_data')
         .forEach(k => localStorage.removeItem(k));
 
       Object.keys(sessionStorage)
@@ -151,12 +151,7 @@
         }
       });
 
-      // Restore user data if it existed
-      if (userDataToPreserve) {
-        localStorage.setItem('chatwoot_user_data', userDataToPreserve);
-      }
-
-      console.log('🗑️ All Chatwoot data cleared (user data preserved)');
+      console.log('🗑️ All Chatwoot data cleared');
     }
 
     // ── Destroy SDK completely from memory ────────────────────────────────────
@@ -180,7 +175,19 @@
       console.log('💥 SDK destroyed');
     }
 
-    // ── Resolve conversation via API ──────────────────────────────────────────
+    // ── Get conversation ID from localStorage ─────────────────────────────────
+    function getConversationId() {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.toLowerCase().includes('conversation')) {
+          const val = localStorage.getItem(key);
+          if (val && !isNaN(Number(val))) return val;
+        }
+      }
+      return null;
+    }
+
+    // ── RESOLVE conversation via API (used by intentional Exit Chat) ──────────
     async function resolveConversation(conversationId) {
       if (!conversationId) return;
       try {
@@ -201,101 +208,147 @@
       }
     }
 
-    // ── Get conversation ID from localStorage ─────────────────────────────────
-    function getConversationId() {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.toLowerCase().includes('conversation')) {
-          return localStorage.getItem(key);
-        }
+    // ── SET PENDING via API (used on browser close / reload / tab switch) ─────
+    // Uses sendBeacon so it fires even during page unload.
+    function setPendingConversation(conversationId) {
+      if (!conversationId) return;
+
+      const url  = `${BASE_URL}/api/v1/accounts/${ACCOUNT_ID}/conversations/${conversationId}/toggle_status`;
+      const body = JSON.stringify({ status: 'pending' });
+
+      // sendBeacon: fires reliably even when the page is closing.
+      // Fallback to synchronous XHR if sendBeacon is not available.
+      if (navigator.sendBeacon) {
+        const blob = new Blob([body], { type: 'application/json' });
+        // sendBeacon does not support custom headers; use a FormData wrapper
+        // with the token embedded in the URL instead.
+        const urlWithToken = `${url}?api_access_token=${API_TOKEN}`;
+        const sent = navigator.sendBeacon(urlWithToken, blob);
+        console.log(sent ? '📤 Pending beacon sent' : '⚠️ Beacon failed, falling back');
+        if (!sent) _xhrPending(url, body);
+      } else {
+        _xhrPending(url, body);
       }
-      return null;
+    }
+
+    function _xhrPending(url, body) {
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url, false); // synchronous — only safe in beforeunload
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('api_access_token', API_TOKEN);
+        xhr.send(body);
+        console.log('📤 Pending XHR sent (sync)');
+      } catch (e) {
+        console.warn('⚠️ XHR pending error:', e);
+      }
     }
 
     // ── Core reset: resolve → destroy → clear → reload ────────────────────────
-    // This is the single source of truth for a full fresh-start.
-    // Both newChat(), exitChat (page button), and the widget's exitChat event
-    // all funnel here so behaviour is always identical.
-    async function resetAndReload(label) {
-      label = label || 'reset';
+    // Called by:  widget's exitChat postMessage  |  page "Exit Chat" button  |  page "New Chat" button
+    // The caller decides whether to resolve (exit) or not (new chat).
+    async function resetAndReload(label, { resolve = false } = {}) {
       console.log(`\n${'='.repeat(60)}`);
-      console.log(`🔄 [${label}] Starting full reset...`);
+      console.log(`🔄 [${label}] Starting full reset (resolve=${resolve})...`);
       console.log(`${'='.repeat(60)}`);
-      
+
       document.getElementById('widget-status-text').textContent = 'Resetting chat...';
 
+      // Mark as intentional so beforeunload won't also fire setPending
+      _intentionalReload = true;
+
       try {
-        // Step 1: Get conversation ID
-        console.log('📍 STEP 1: Getting conversation ID...');
         const conversationId = getConversationId();
         console.log(`   Found conversation ID: ${conversationId}`);
-        
-        // Step 2: Resolve on server
-        if (conversationId) {
-          console.log('📍 STEP 2: Resolving conversation on server...');
+
+        if (resolve && conversationId) {
+          console.log('📍 Resolving conversation...');
           await resolveConversation(conversationId);
-          console.log('   ✅ Conversation resolved');
-        } else {
-          console.log('📍 STEP 2: No conversation ID found - skipping resolve');
         }
 
-        // Step 3: Destroy SDK
-        console.log('📍 STEP 3: Destroying SDK from DOM...');
+        console.log('📍 Destroying SDK...');
         destroySDK();
-        console.log('   ✅ SDK destroyed');
 
-        // Step 4: Clear all storage
-        console.log('📍 STEP 4: Clearing all Chatwoot storage...');
+        console.log('📍 Clearing storage...');
         clearAllChatwootData();
-        console.log('   ✅ Storage cleared');
 
-        // Step 5: Reload page
-        console.log('📍 STEP 5: Reloading page in 500ms...');
-        setTimeout(() => {
-          console.log('🔄 Page reloading now...');
-          location.reload();
-        }, 500);
-        
+        console.log('📍 Reloading page in 500ms...');
+        setTimeout(() => { location.reload(); }, 500);
+
       } catch (error) {
         console.error('❌ Error during reset:', error);
-        // Still reload even if there's an error
         setTimeout(() => location.reload(), 1000);
       }
     }
 
-    // ── New Chat (button) ─────────────────────────────────────────────────────
-    async function newChat() {
-      console.log('\n🟦 NEW CHAT button clicked');
-      await resetAndReload('newChat');
+    // ── Page button: Exit Chat (resolve + reset) ──────────────────────────────
+    async function exitChatAndReset() {
+      console.log('\n🔴 EXIT CHAT button clicked');
+      await resetAndReload('exitChat', { resolve: true });
     }
 
+    // ── Page button: New Chat (reset only, no resolve) ────────────────────────
+    async function newChat() {
+      console.log('\n🟦 NEW CHAT button clicked');
+      await resetAndReload('newChat', { resolve: false });
+    }
+
+    function toggleWidget() {
+      if (window.$chatwoot) window.$chatwoot.toggle();
+    }
+
+    // ── PENDING on browser close / reload (unintentional navigation) ─────────
+    //
+    // beforeunload fires for: F5, Ctrl+R, closing tab, closing browser, navigating away.
+    // We check _intentionalReload to skip this when WE triggered the reload.
+    //
+    // visibilitychange (hidden) is a belt-and-suspenders approach for mobile
+    // browsers where beforeunload is unreliable.
+    window.addEventListener('beforeunload', function () {
+      if (_intentionalReload) {
+        console.log('ℹ️ Intentional reload — skipping setPending');
+        return;
+      }
+      const conversationId = getConversationId();
+      if (conversationId) {
+        console.log('🔶 Browser closing/reloading → setting conversation to PENDING');
+        setPendingConversation(conversationId);
+      }
+    });
+
+    // Mobile / background tab fallback
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && !_intentionalReload) {
+        const conversationId = getConversationId();
+        if (conversationId) {
+          console.log('🔶 Tab hidden → setting conversation to PENDING');
+          setPendingConversation(conversationId);
+        }
+      }
+    });
+
     // ── Listen for exitChat event fired by HeaderActions.vue inside the iframe ─
-    // When the user clicks "Exit Chat" inside the widget, HeaderActions sends
-    // a message. The SDK forwards all widget messages to the parent via window.postMessage.
+    // Widget's "Exit Chat" button → resolves conversation → fires exitChat postMessage
+    // Parent catches it here → destroys SDK + clears storage + reloads page.
+    // (Resolve already happened inside the iframe via toggleStatus().)
     window.addEventListener('message', function (e) {
-      // Chatwoot SDK wraps messages as { event, ... }
       console.log('📨 Message received from iframe:', e.data);
-      
+
       if (e.data && (e.data.event === 'exitChat' || e.data.type === 'exit-chat')) {
-        console.log('🎯 Exit Chat event detected - running full reset');
-        resetAndReload('widgetExit');
+        console.log('🎯 Exit Chat event from widget — running full reset (conversation already resolved by widget)');
+        // resolve: false — the widget already called toggleStatus() before sending this event
+        resetAndReload('widgetExit', { resolve: false });
       }
-      
+
       if (e.data && e.data.event === 'closeWindow') {
-        console.log('📍 Close Window event - just closing bubble');
-        // This closes the bubble but keeps the page
+        console.log('📍 Close Window event — just closing bubble');
       }
     });
 
-    // Also support the CustomEvent path (non-iframe / direct usage)
+    // CustomEvent path (non-iframe / direct usage)
     window.addEventListener('chatwoot:exit-chat', function () {
-      console.log('📨 chatwoot:exit-chat CustomEvent received — running full reset');
-      resetAndReload('widgetExitDirect');
-    });
-
-    // Listen for bubble toggle events
-    document.addEventListener('chatwoot-ready', function() {
-      console.log('✅ Chatwoot widget is ready');
+      console.log('📨 chatwoot:exit-chat CustomEvent — running full reset');
+      resetAndReload('widgetExitDirect', { resolve: true });
     });
 
     // ── Start ─────────────────────────────────────────────────────────────────

@@ -155,9 +155,16 @@ export const actions = {
     }
   },
 
-  update: async ({ dispatch }, { user }) => {
+  update: async ({ commit, dispatch }, { user }) => {
     try {
       await ContactsAPI.update(user);
+      // Immediately update Vuex store with new user data so any greeting
+      // or UI element reflecting the name uses the current session's input.
+      commit(SET_CURRENT_USER, {
+        ...user,
+        has_email: !!user.email,
+        has_phone_number: !!user.phone_number,
+      });
       dispatch('get');
     } catch (error) {
       // Ignore error

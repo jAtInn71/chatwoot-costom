@@ -1,7 +1,7 @@
 <script>
 import CustomButton from 'shared/components/Button.vue';
 import Spinner from 'shared/components/Spinner.vue';
-import { mapGetters } from 'vuex';
+import { mapGetters, mapActions } from 'vuex';
 import { getContrastingTextColor } from '@chatwoot/utils';
 import { isEmptyObject } from 'widget/helpers/utils';
 import { getRegexp } from 'shared/helpers/Validators';
@@ -123,6 +123,7 @@ export default {
     },
   },
   methods: {
+    ...mapActions('contacts', ['update']),
     labelClass(input) {
       const { state } = input.context;
       const hasErrors = state.invalid;
@@ -223,6 +224,25 @@ export default {
         phone_number: phoneNumber,
         submitted_at: new Date().toISOString(),
       };
+
+      // ── Persist to localStorage so greetings/exit-chat always reflect
+      //    the CURRENT session's name, not a previous session's name.
+      try {
+        localStorage.setItem('chatwoot_user_data', JSON.stringify(userData));
+      } catch (_) {}
+
+      // ── Update the contact on the server so the AI greeting uses the
+      //    name the user just typed, not the old cached contact name.
+      //    Fire-and-forget — don't block the conversation creation.
+      try {
+        this.$store.dispatch('contacts/update', {
+          user: {
+            name: fullName,
+            email: emailAddress,
+            phone_number: phoneNumber,
+          },
+        });
+      } catch (_) {}
 
       // Send to n8n webhook silently (fire and forget)
       this.sendToN8n(userData);
