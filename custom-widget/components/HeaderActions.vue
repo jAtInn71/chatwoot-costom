@@ -80,23 +80,6 @@ export default {
       }
     },
 
-    // Notify the parent page to do a full SDK teardown + reload
-    sendExitChatMessage() {
-      if (IFrameHelper.isIFrame()) {
-        // Send to parent window so index.html can handle full SDK reset
-        IFrameHelper.sendMessage({ event: 'exitChat' });
-      } else if (RNHelper.isRNWebView) {
-        RNHelper.sendMessage({ type: 'exit-chat' });
-      } else {
-        // Direct (non-iframe) usage — dispatch on the top window
-        try {
-          window.top.dispatchEvent(new CustomEvent('chatwoot:exit-chat'));
-        } catch (_) {
-          window.dispatchEvent(new CustomEvent('chatwoot:exit-chat'));
-        }
-      }
-    },
-
     requestExitChat() {
       this.showConfirmExitChat = !this.showConfirmExitChat;
     },
@@ -110,13 +93,8 @@ export default {
       this.isEndingChat = true;
       this.showConfirmExitChat = false;
 
-      console.log('\n' + '='.repeat(60));
-      console.log('🔴 EXIT CHAT BUTTON CLICKED - Starting 6-step cleanup');
-      console.log('='.repeat(60));
-
       try {
-        // Step 1: Resolve the conversation on the server
-        console.log('📍 STEP 1: Resolving conversation on server...');
+        // Step 1: Resolve the conversation on the server (best-effort)
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -126,63 +104,34 @@ export default {
         ) {
           try {
             await toggleStatus();
-            console.log('   ✅ Conversation resolved on server');
           } catch (e) {
-            console.warn('   ⚠️ Could not resolve conversation:', e.message);
             // Continue with exit even if resolve fails
           }
-        } else {
-          console.log('   ⏭️ Conversation status is:', this.conversationStatus);
         }
 
         // Step 2: Clear conversation Vuex store
-        console.log('📍 STEP 2: Clearing conversation Vuex store...');
         this.$store.commit('conversation/clearConversations');
-        console.log('   ✅ Conversation store cleared');
 
-        // Step 3: Clear contact Vuex store + all storage + axios header
-        console.log('📍 STEP 3: Clearing contact store + storage...');
-        await this.$store.dispatch('contacts/clearCurrentUser');
-        console.log('   ✅ Contact store and storage cleared');
+        // Step 3: Navigate to prechat-form NOW, before the SDK reloads.
+        // This ensures that if the parent takes a moment to reload the iframe,
+        // the user sees the form and not a blank messages screen.
+        await this.router.replace({ name: 'prechat-form' }).catch(() => {});
 
-        // Step 4: Give a brief moment for state updates to process
-        console.log('📍 STEP 4: Waiting 200ms for state updates...');
-        await new Promise(resolve => setTimeout(resolve, 200));
-        console.log('   ✅ Wait complete');
-
-        // Step 5: Navigate to pre-chat form to reset widget UI
-        console.log('📍 STEP 5: Navigating to prechat-form route...');
-        await this.router.replace({ name: 'prechat-form' }).catch((err) => {
-          console.warn('   ⚠️ Router error:', err?.message || err);
-        });
-        console.log('   ✅ Route navigation complete');
-
-        // Step 6: Tell the parent page to close the bubble and fully reload the SDK.
-        //         closeWindow hides the bubble immediately; exitChat does the full teardown.
-        console.log('📍 STEP 6: Sending messages to parent...');
+        // Step 4: Hide the widget bubble on the parent page
         this.sendCloseMessage();
-        console.log('   ✅ Close message sent');
-        this.sendExitChatMessage();
-        console.log('   ✅ Exit chat message sent');
+
+        // Step 5: Clear contact store + storage + send exitChat to parent.
+        // clearCurrentUser() is the single place that calls sendMessage({ event: 'exitChat' }).
+        // Do NOT call sendExitChatMessage() here — that would cause a double reload.
+        await this.$store.dispatch('contacts/clearCurrentUser');
 
       } catch (e) {
-        // Best-effort cleanup on error
-        console.error('❌ ERROR during exit chat:', e.message);
-        try { 
-          this.$store.commit('conversation/clearConversations');
-          console.log('   ✅ Fallback: conversation store cleared');
-        } catch (_) {}
-        try { 
-          await this.$store.dispatch('contacts/clearCurrentUser');
-          console.log('   ✅ Fallback: contact store cleared');
-        } catch (_) {}
-        // Still tell the parent to reset so the user isn't stuck
+        // Best-effort fallback
+        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
+        try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
         this.sendCloseMessage();
-        this.sendExitChatMessage();
-        console.log('   ✅ Fallback: parent messages sent');
       } finally {
         this.isEndingChat = false;
-        console.log('\n✅ Exit chat cleanup complete\n');
       }
     },
   },

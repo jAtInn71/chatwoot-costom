@@ -22,40 +22,60 @@ export const updateWidgetAuthToken = widgetAuthToken => {
   }
 };
 
-const clearAllChatwootStorage = () => {
-  const explicitKeys = [
-    'cwc-unique-id',
-    'cwc-session',
-    'cw_contact_uuid',
-    'cw_conversation',
-    'cw_conversation_id',
-    'chatwoot_contact_id',
-    'chatwoot_conversation_id',
-    'chatwootContactIdentity',
-    'user_color',
-    'user_uuid',
-    'cw_d',
-    'cw_auth_token',
-    'widget_auth_token',
-    // Clear saved user data so pre-chat form starts fresh on next open
-    'chatwoot_user_data',
-  ];
-  explicitKeys.forEach(k => {
+// Keys that identify a session/conversation — wiped on exit and on 404.
+// chatwoot_user_data is intentionally excluded so the form can pre-fill
+// the user's name/email on the next visit.
+const SESSION_KEYS = [
+  'cwc-unique-id',
+  'cwc-session',
+  'cw_contact_uuid',
+  'cw_conversation',
+  'cw_conversation_id',
+  'chatwoot_contact_id',
+  'chatwoot_conversation_id',
+  'chatwootContactIdentity',
+  'user_color',
+  'user_uuid',
+  'cw_d',
+  'cw_auth_token',
+  'widget_auth_token',
+];
+
+const EMPTY_USER = {
+  has_email: false,
+  has_phone_number: false,
+  identifier: null,
+  name: '',
+  email: '',
+  phone_number: '',
+};
+
+/**
+ * Wipe all session/conversation storage while keeping chatwoot_user_data
+ * so the pre-chat form can pre-fill on next open.
+ */
+const clearSessionStorage = () => {
+  // Explicit keys
+  SESSION_KEYS.forEach(k => {
     localStorage.removeItem(k);
     sessionStorage.removeItem(k);
   });
 
+  // Pattern-based sweep (keep chatwoot_user_data)
   [localStorage, sessionStorage].forEach(storage => {
     Object.keys(storage)
-      .filter(k =>
-        k.includes('chatwoot') ||
-        k.includes('cw_') ||
-        k.includes('cwc') ||
-        k.includes('widget_auth')
+      .filter(
+        k =>
+          (k.includes('chatwoot') ||
+            k.includes('cw_') ||
+            k.includes('cwc') ||
+            k.includes('widget_auth')) &&
+          k !== 'chatwoot_user_data'
       )
       .forEach(k => storage.removeItem(k));
   });
 
+  // Cookies
   document.cookie.split(';').forEach(cookie => {
     const name = cookie.split('=')[0].trim();
     if (
@@ -69,18 +89,12 @@ const clearAllChatwootStorage = () => {
     }
   });
 
-  // Strip cw_conversation (and any other cw_ params) from the iframe's
-  // own URL — buildUrl() in contacts API appends window.location.search
-  // to every request, so if the JWT is still in the URL it gets re-sent
-  // to the server even after localStorage is cleared, causing the server
-  // to recognise the old contact and skip the pre-chat form.
+  // Strip session params from the iframe URL so they don't get re-sent
   try {
     const url = new URL(window.location.href);
-    // Remove every param that could identify the old session
     ['cw_conversation', 'cw_contact', 'cw_d', 'website_token'].forEach(p =>
       url.searchParams.delete(p)
     );
-    // Also remove any remaining cw_ prefixed params dynamically
     [...url.searchParams.keys()]
       .filter(k => k.startsWith('cw_') || k.startsWith('cwc'))
       .forEach(k => url.searchParams.delete(k));
@@ -100,7 +114,16 @@ export const actions = {
       const { data } = await ContactsAPI.get();
       commit(SET_CURRENT_USER, data);
     } catch (error) {
-      // Ignore error
+      // 404 means the contact/conversation was deleted (e.g. after exit-chat
+      // the server resolved the conversation). Clear stale session data and
+      // reset to a blank user so the pre-chat form is shown.
+      // Home.vue will route to prechat-form because conversationSize stays 0.
+      if (error.response?.status === 404) {
+        clearSessionStorage();
+        removeHeader('X-Auth-Token');
+        commit(SET_CURRENT_USER, EMPTY_USER);
+      }
+      // All other errors are silently ignored.
     }
   },
 
@@ -175,31 +198,27 @@ export const actions = {
     }
   },
 
+  /**
+   * Called by HeaderActions.endChat().
+   * Clears local state and storage, then tells the parent to reload the SDK.
+   * HeaderActions is responsible for the router.replace('prechat-form') call
+   * BEFORE calling this action, so the user never sees the blank messages page.
+   */
   clearCurrentUser: ({ commit }) => {
     // 1. Reset Vuex contact state
-    commit(SET_CURRENT_USER, {
-      has_email: false,
-      has_phone_number: false,
-      identifier: null,
-      name: '',
-      email: '',
-      phone_number: '',
-    });
+    commit(SET_CURRENT_USER, EMPTY_USER);
 
-    // 2. Remove ALL axios auth headers (X-Auth-Token and api_access_token)
+    // 2. Remove axios auth headers
     removeHeader('X-Auth-Token');
     removeHeader('api_access_token');
     removeHeader('user_access_token');
 
-    // 3. Wipe all storage inside the iframe
-    clearAllChatwootStorage();
+    // 3. Wipe session storage (keep chatwoot_user_data for form pre-fill)
+    clearSessionStorage();
 
-    // 4. Tell the parent page to fully destroy + reload the SDK.
-    //    This is the critical step — the iframe src URL itself carries
-    //    the ?cw_conversation=JWT param that makes the server recognise
-    //    the old contact and skip the pre-chat form. The only way to
-    //    remove it is to let the parent tear down the whole iframe and
-    //    re-inject the SDK script fresh (no JWT in the new src).
+    // 4. Tell the parent to fully tear down and reload the SDK iframe.
+    //    The exitChat message is sent here; HeaderActions must NOT send it
+    //    again to avoid a double reload.
     sendMessage({ event: 'exitChat' });
   },
 };

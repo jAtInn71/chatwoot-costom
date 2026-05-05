@@ -123,6 +123,7 @@ export const actions = {
       // Show error
     }
   },
+
   fetchOldConversations: async ({ commit }, { before } = {}) => {
     try {
       commit('setConversationListLoading', true);
@@ -133,23 +134,17 @@ export const actions = {
       const formattedMessages = getNonDeletedMessages({ messages: payload });
       commit('conversation/setMetaUserLastSeenAt', lastSeen, { root: true });
       commit('setMessagesInConversation', formattedMessages);
-      commit('setConversationListLoading', false);
-      console.log('✅ Old conversations fetched successfully');
     } catch (error) {
-      // Handle 404 - conversation doesn't exist, user needs to start fresh
+      // On 404 the conversation no longer exists (resolved/deleted after exit-chat).
+      // Treat this as "no conversation" — the store stays empty, and Home.vue's
+      // startConversation() will route to prechat-form because conversationSize === 0.
+      // No storage clearing needed here — clearCurrentUser() already wiped everything
+      // when the user clicked Exit Chat.
       if (error.response?.status === 404) {
-        console.warn('⚠️ Conversation not found (404) - clearing session for fresh start');
-        // Clear stale conversation data from sessionStorage
-        Object.keys(sessionStorage)
-          .filter(k => k.includes('cw_conversation') || k.includes('cw_contact'))
-          .forEach(k => {
-            console.log(`   Clearing: ${k}`);
-            sessionStorage.removeItem(k);
-          });
+        commit('clearConversations');
       }
-      // Silently fail - widget will show pre-chat form
+    } finally {
       commit('setConversationListLoading', false);
-      console.log('ℹ️ Could not fetch conversations (will show pre-chat form)');
     }
   },
 
