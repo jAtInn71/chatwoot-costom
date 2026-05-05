@@ -234,7 +234,29 @@ export default {
       return {};
     },
     onSubmit() {
+      console.log('\n' + '='.repeat(60));
+      console.log('📝 PRE-CHAT FORM SUBMITTED');
+      console.log('='.repeat(60));
+      
       const { emailAddress, fullName, phoneNumber, message } = this.formValues;
+      
+      // Clear any stale session data from previous conversation
+      console.log('   Clearing stale session data from previous conversation...');
+      const staleKeys = [
+        'cw_contact_uuid',
+        'cw_conversation_id',
+        'cw_conversation',
+        'chatwoot_conversation_id',
+        'chatwootContactIdentity',
+        'cw_d',
+        'cw_auth_token',
+      ];
+      staleKeys.forEach(k => {
+        if (sessionStorage.getItem(k)) {
+          console.log(`   Removed: ${k}`);
+          sessionStorage.removeItem(k);
+        }
+      });
       
       // Save user data to localStorage for next session
       const userData = {
@@ -244,10 +266,12 @@ export default {
         submitted_at: new Date().toISOString(),
       };
       localStorage.setItem('chatwoot_user_data', JSON.stringify(userData));
+      console.log('   ✅ User data saved to localStorage');
       
       // Send to n8n webhook silently (no message in widget)
       this.sendToN8n(userData);
       
+      console.log(`   Emitting submitPreChat event with: name="${fullName}", email="${emailAddress}"`);
       this.$emit('submitPreChat', {
         fullName,
         phoneNumber,
@@ -257,9 +281,11 @@ export default {
         conversationCustomAttributes: this.conversationCustomAttributes,
         contactCustomAttributes: this.contactCustomAttributes,
       });
+      console.log('✅ Form submission complete\n');
     },
     loadSavedUserData() {
       try {
+        console.log('📝 Form.vue mounted - checking for saved user data...');
         const savedData = localStorage.getItem('chatwoot_user_data');
         if (savedData) {
           const { name = '', email = '', phone_number = '' } = JSON.parse(savedData);
@@ -269,7 +295,9 @@ export default {
             phoneNumber: phone_number,
             message: '',
           };
-          console.log('📝 Form pre-filled with saved user data');
+          console.log('✅ Form pre-filled with saved data:', { name, email, phone_number });
+        } else {
+          console.log('ℹ️ No saved user data found - showing blank form');
         }
       } catch (e) {
         console.warn('⚠️ Could not load saved user data:', e.message);

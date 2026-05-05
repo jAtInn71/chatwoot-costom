@@ -89,14 +89,46 @@ export const actions = {
       const { data } = await ContactsAPI.get();
       commit(SET_CURRENT_USER, data);
     } catch (error) {
-      // If 404, conversation is invalid — clear stale data
+      // If 404, the contact/conversation doesn't exist or is invalid
+      // This happens when:
+      //   1. User exits chat (conversation marked as resolved/deleted on server)
+      //   2. Widget is reopened and tries to fetch the old conversation
+      //   3. API returns 404 because that conversation no longer exists
       if (error.response?.status === 404) {
-        console.warn('⚠️ Contact not found (404) - clearing stale data');
-        // Clear conversation-related session data
-        sessionStorage.removeItem('cw_contact_uuid');
-        sessionStorage.removeItem('cw_conversation_id');
+        console.warn('⚠️ Contact/Conversation not found (404)');
+        console.log('   Clearing ALL stale session data to force fresh start...');
+        
+        // Clear all conversation/contact session data (sessionStorage)
+        const sessionKeys = Object.keys(sessionStorage);
+        sessionKeys.forEach(k => {
+          if (k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')) {
+            console.log(`   Clearing: ${k}`);
+            sessionStorage.removeItem(k);
+          }
+        });
+        
+        // Also clear from localStorage (except user_data)
+        const localKeys = Object.keys(localStorage);
+        localKeys.forEach(k => {
+          if ((k.includes('chatwoot') || k.includes('cw_') || k.includes('cwc')) && k !== 'chatwoot_user_data') {
+            console.log(`   Clearing: ${k}`);
+            localStorage.removeItem(k);
+          }
+        });
+        
+        console.log('✅ Stale data cleared - widget ready for fresh start');
+        
+        // Reset contact state to empty (will show pre-chat form)
+        commit(SET_CURRENT_USER, {
+          has_email: false,
+          has_phone_number: false,
+          identifier: null,
+          name: '',
+          email: '',
+          phone_number: '',
+        });
       }
-      // Ignore error
+      // Ignore all other errors too
     }
   },
 
@@ -194,6 +226,7 @@ export const actions = {
   },
 
   clearCurrentUser: ({ commit, state }) => {
+    console.log('👤 contacts/clearCurrentUser action triggered');
     // Reset conversation state but KEEP user data for next session
     // User data is saved in localStorage and will be shown on next open
     commit(SET_CURRENT_USER, {
@@ -266,7 +299,7 @@ export const actions = {
       window.history.replaceState({}, '', url.toString());
     } catch (_) {}
 
-    console.log('✅ Conversation cleared (user data preserved for next session)');
+    console.log('✅ Contact state cleared (user data preserved in localStorage for next session)');
 
     // Tell the parent page to fully destroy + reload the SDK
     sendMessage({ event: 'exitChat' });

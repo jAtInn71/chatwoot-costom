@@ -26,7 +26,12 @@ export default {
     // After clearCurrentUser, these are empty strings — so this returns false
     // and the pre-chat form is always shown to a fresh/cleared user.
     hasKnownContact() {
-      return !!(this.currentUser?.name || this.currentUser?.email);
+      // Debug logging
+      const hasName = !!(this.currentUser?.name);
+      const hasEmail = !!(this.currentUser?.email);
+      const result = hasName || hasEmail;
+      console.log(`👤 hasKnownContact: ${result} (name: "${this.currentUser?.name}", email: "${this.currentUser?.email}")`);
+      return result;
     },
   },
   mounted() {
@@ -54,9 +59,11 @@ export default {
       
       const handleVisibilityChange = () => {
         const isNowVisible = !document.hidden;
+        console.log(`📱 Visibility change: wasHidden=${wasHidden}, isNowVisible=${isNowVisible}`);
+        
         // If widget was hidden and is now visible, reset the conversation
         if (wasHidden && isNowVisible && this.$route.name === 'messages') {
-          console.log('📱 Widget reopened - resetting to pre-chat form');
+          console.log('🔄 Widget reopened - resetting to pre-chat form');
           this.startConversation();
         }
         wasHidden = !isNowVisible;
@@ -70,6 +77,13 @@ export default {
       };
     },
     startConversation() {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log('🏠 startConversation() called');
+      console.log(`   preChatFormEnabled: ${this.preChatFormEnabled}`);
+      console.log(`   conversationSize: ${this.conversationSize}`);
+      console.log(`   hasKnownContact: ${this.hasKnownContact}`);
+      console.log(`   Current route: ${this.$route.name}`);
+      
       // Show pre-chat form if:
       //   1. Pre-chat form is enabled, AND
       //   2. Either there is no existing conversation OR the contact was cleared
@@ -79,9 +93,16 @@ export default {
         // Always show form if no conversation or contact data cleared
         // This ensures fresh start on every widget open
         if (!this.conversationSize || !this.hasKnownContact) {
+          console.log('✅ Navigating to prechat-form');
           return this.router.replace({ name: 'prechat-form' });
+        } else {
+          console.log('ℹ️ Has known contact + conversation - showing messages');
         }
+      } else {
+        console.log('ℹ️ preChatFormEnabled is false - showing messages');
       }
+      
+      console.log('✅ Navigating to messages');
       return this.router.replace({ name: 'messages' });
     },
   },

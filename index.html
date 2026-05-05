@@ -218,46 +218,84 @@
     // all funnel here so behaviour is always identical.
     async function resetAndReload(label) {
       label = label || 'reset';
+      console.log(`\n${'='.repeat(60)}`);
       console.log(`🔄 [${label}] Starting full reset...`);
+      console.log(`${'='.repeat(60)}`);
+      
       document.getElementById('widget-status-text').textContent = 'Resetting chat...';
 
-      const conversationId = getConversationId();
-      if (conversationId) await resolveConversation(conversationId);
+      try {
+        // Step 1: Get conversation ID
+        console.log('📍 STEP 1: Getting conversation ID...');
+        const conversationId = getConversationId();
+        console.log(`   Found conversation ID: ${conversationId}`);
+        
+        // Step 2: Resolve on server
+        if (conversationId) {
+          console.log('📍 STEP 2: Resolving conversation on server...');
+          await resolveConversation(conversationId);
+          console.log('   ✅ Conversation resolved');
+        } else {
+          console.log('📍 STEP 2: No conversation ID found - skipping resolve');
+        }
 
-      destroySDK();
-      clearAllChatwootData();
+        // Step 3: Destroy SDK
+        console.log('📍 STEP 3: Destroying SDK from DOM...');
+        destroySDK();
+        console.log('   ✅ SDK destroyed');
 
-      // A full page reload is the only reliable way to flush the cw_conversation
-      // JWT that lives in the iframe src URL — no in-memory trick survives it.
-      setTimeout(() => location.reload(), 500);
-    }
+        // Step 4: Clear all storage
+        console.log('📍 STEP 4: Clearing all Chatwoot storage...');
+        clearAllChatwootData();
+        console.log('   ✅ Storage cleared');
 
-    // ── Toggle widget ─────────────────────────────────────────────────────────
-    function toggleWidget() {
-      if (window.$chatwoot) window.$chatwoot.toggle();
+        // Step 5: Reload page
+        console.log('📍 STEP 5: Reloading page in 500ms...');
+        setTimeout(() => {
+          console.log('🔄 Page reloading now...');
+          location.reload();
+        }, 500);
+        
+      } catch (error) {
+        console.error('❌ Error during reset:', error);
+        // Still reload even if there's an error
+        setTimeout(() => location.reload(), 1000);
+      }
     }
 
     // ── New Chat (button) ─────────────────────────────────────────────────────
     async function newChat() {
+      console.log('\n🟦 NEW CHAT button clicked');
       await resetAndReload('newChat');
     }
 
     // ── Listen for exitChat event fired by HeaderActions.vue inside the iframe ─
     // When the user clicks "Exit Chat" inside the widget, HeaderActions sends
-    // an IFrameHelper message with event: 'exitChat'.  The SDK forwards all
-    // widget messages to the parent via window.postMessage so we catch it here.
+    // a message. The SDK forwards all widget messages to the parent via window.postMessage.
     window.addEventListener('message', function (e) {
       // Chatwoot SDK wraps messages as { event, ... }
-      if (e.data && e.data.event === 'exitChat') {
-        console.log('📨 Received exitChat from widget — running full reset');
+      console.log('📨 Message received from iframe:', e.data);
+      
+      if (e.data && (e.data.event === 'exitChat' || e.data.type === 'exit-chat')) {
+        console.log('🎯 Exit Chat event detected - running full reset');
         resetAndReload('widgetExit');
+      }
+      
+      if (e.data && e.data.event === 'closeWindow') {
+        console.log('📍 Close Window event - just closing bubble');
+        // This closes the bubble but keeps the page
       }
     });
 
     // Also support the CustomEvent path (non-iframe / direct usage)
     window.addEventListener('chatwoot:exit-chat', function () {
-      console.log('📨 chatwoot:exit-chat event received — running full reset');
+      console.log('📨 chatwoot:exit-chat CustomEvent received — running full reset');
       resetAndReload('widgetExitDirect');
+    });
+
+    // Listen for bubble toggle events
+    document.addEventListener('chatwoot-ready', function() {
+      console.log('✅ Chatwoot widget is ready');
     });
 
     // ── Start ─────────────────────────────────────────────────────────────────

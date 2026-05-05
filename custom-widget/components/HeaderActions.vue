@@ -110,8 +110,13 @@ export default {
       this.isEndingChat = true;
       this.showConfirmExitChat = false;
 
+      console.log('\n' + '='.repeat(60));
+      console.log('🔴 EXIT CHAT BUTTON CLICKED - Starting 6-step cleanup');
+      console.log('='.repeat(60));
+
       try {
         // Step 1: Resolve the conversation on the server
+        console.log('📍 STEP 1: Resolving conversation on server...');
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -121,39 +126,63 @@ export default {
         ) {
           try {
             await toggleStatus();
-            console.log('✅ Conversation resolved on server');
+            console.log('   ✅ Conversation resolved on server');
           } catch (e) {
-            console.warn('⚠️ Could not resolve conversation:', e.message);
+            console.warn('   ⚠️ Could not resolve conversation:', e.message);
             // Continue with exit even if resolve fails
           }
+        } else {
+          console.log('   ⏭️ Conversation status is:', this.conversationStatus);
         }
 
         // Step 2: Clear conversation Vuex store
+        console.log('📍 STEP 2: Clearing conversation Vuex store...');
         this.$store.commit('conversation/clearConversations');
+        console.log('   ✅ Conversation store cleared');
 
         // Step 3: Clear contact Vuex store + all storage + axios header
+        console.log('📍 STEP 3: Clearing contact store + storage...');
         await this.$store.dispatch('contacts/clearCurrentUser');
+        console.log('   ✅ Contact store and storage cleared');
 
         // Step 4: Give a brief moment for state updates to process
+        console.log('📍 STEP 4: Waiting 200ms for state updates...');
         await new Promise(resolve => setTimeout(resolve, 200));
+        console.log('   ✅ Wait complete');
 
         // Step 5: Navigate to pre-chat form to reset widget UI
-        this.router.replace({ name: 'prechat-form' }).catch(() => {});
+        console.log('📍 STEP 5: Navigating to prechat-form route...');
+        await this.router.replace({ name: 'prechat-form' }).catch((err) => {
+          console.warn('   ⚠️ Router error:', err?.message || err);
+        });
+        console.log('   ✅ Route navigation complete');
 
         // Step 6: Tell the parent page to close the bubble and fully reload the SDK.
         //         closeWindow hides the bubble immediately; exitChat does the full teardown.
+        console.log('📍 STEP 6: Sending messages to parent...');
         this.sendCloseMessage();
+        console.log('   ✅ Close message sent');
         this.sendExitChatMessage();
+        console.log('   ✅ Exit chat message sent');
 
       } catch (e) {
         // Best-effort cleanup on error
-        try { this.$store.commit('conversation/clearConversations'); } catch (_) {}
-        try { await this.$store.dispatch('contacts/clearCurrentUser'); } catch (_) {}
+        console.error('❌ ERROR during exit chat:', e.message);
+        try { 
+          this.$store.commit('conversation/clearConversations');
+          console.log('   ✅ Fallback: conversation store cleared');
+        } catch (_) {}
+        try { 
+          await this.$store.dispatch('contacts/clearCurrentUser');
+          console.log('   ✅ Fallback: contact store cleared');
+        } catch (_) {}
         // Still tell the parent to reset so the user isn't stuck
         this.sendCloseMessage();
         this.sendExitChatMessage();
+        console.log('   ✅ Fallback: parent messages sent');
       } finally {
         this.isEndingChat = false;
+        console.log('\n✅ Exit chat cleanup complete\n');
       }
     },
   },

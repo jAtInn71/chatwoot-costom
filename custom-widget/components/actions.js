@@ -134,8 +134,22 @@ export const actions = {
       commit('conversation/setMetaUserLastSeenAt', lastSeen, { root: true });
       commit('setMessagesInConversation', formattedMessages);
       commit('setConversationListLoading', false);
+      console.log('✅ Old conversations fetched successfully');
     } catch (error) {
+      // Handle 404 - conversation doesn't exist, user needs to start fresh
+      if (error.response?.status === 404) {
+        console.warn('⚠️ Conversation not found (404) - clearing session for fresh start');
+        // Clear stale conversation data from sessionStorage
+        Object.keys(sessionStorage)
+          .filter(k => k.includes('cw_conversation') || k.includes('cw_contact'))
+          .forEach(k => {
+            console.log(`   Clearing: ${k}`);
+            sessionStorage.removeItem(k);
+          });
+      }
+      // Silently fail - widget will show pre-chat form
       commit('setConversationListLoading', false);
+      console.log('ℹ️ Could not fetch conversations (will show pre-chat form)');
     }
   },
 
