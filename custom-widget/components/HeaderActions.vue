@@ -121,8 +121,10 @@ export default {
         ) {
           try {
             await toggleStatus();
+            console.log('✅ Conversation resolved on server');
           } catch (e) {
-            // ignore — may already be resolved
+            console.warn('⚠️ Could not resolve conversation:', e.message);
+            // Continue with exit even if resolve fails
           }
         }
 
@@ -132,7 +134,13 @@ export default {
         // Step 3: Clear contact Vuex store + all storage + axios header
         await this.$store.dispatch('contacts/clearCurrentUser');
 
-        // Step 4: Tell the parent page to close the bubble and fully reload the SDK.
+        // Step 4: Give a brief moment for state updates to process
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Step 5: Navigate to pre-chat form to reset widget UI
+        this.router.replace({ name: 'prechat-form' }).catch(() => {});
+
+        // Step 6: Tell the parent page to close the bubble and fully reload the SDK.
         //         closeWindow hides the bubble immediately; exitChat does the full teardown.
         this.sendCloseMessage();
         this.sendExitChatMessage();
@@ -207,14 +215,6 @@ export default {
       @click="popoutWindow"
     >
       <FluentIcon icon="open" size="20" class="text-n-slate-12" />
-    </button>
-
-    <button
-      class="header-action-btn close-button"
-      :class="{ 'rn-close-button': isRNWebView }"
-      @click="sendCloseMessage"
-    >
-      <FluentIcon icon="dismiss" size="22" class="text-n-slate-12" />
     </button>
 
   </div>

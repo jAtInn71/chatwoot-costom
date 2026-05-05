@@ -77,5 +77,12 @@ COPY custom-widget/views/Home.vue /app/app/javascript/widget/views/Home.vue
 COPY custom-widget/patches/conversations_controller.rb /app/app/controllers/api/v1/widget/conversations_controller.rb
 COPY custom-widget/patches/website_token_helper.rb /app/app/controllers/concerns/website_token_helper.rb
 
-LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + New Chat + Exit Chat"
-LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration and header action buttons"
+LABEL org.opencontainers.image.title="Chatwoot with ElevenLabs Voice + Persistent User Data + n8n Integration"
+LABEL org.opencontainers.image.description="Chatwoot custom image with ElevenLabs voice integration, persistent user data across sessions, and n8n webhook support"
+
+# Environment variables for customization
+# Set n8n webhook URL for prechat form submissions (optional)
+ENV N8N_WEBHOOK_URL=""
+ENV VITE_ELEVENLABS_AGENT_ID=${VITE_ELEVENLABS_AGENT_ID}
+ENV VITE_ELEVENLABS_VOICE_ID=${VITE_ELEVENLABS_VOICE_ID}
+ENV VITE_ELEVENLABS_AGENT_NAME=${VITE_ELEVENLABS_AGENT_NAME}

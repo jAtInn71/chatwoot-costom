@@ -187,44 +187,79 @@ export const actions = {
   },
 
   clearCurrentUser: ({ commit, state }) => {
-    // PRESERVE user data before clearing storage
-    const userDataToPreserve = {
-      name: state.currentUser.name,
-      email: state.currentUser.email,
-      phone_number: state.currentUser.phone_number,
-    };
-    
-    // 1. Reset Vuex contact state (but keep user's basic info)
+    // Reset conversation state but KEEP user data for next session
+    // User data is saved in localStorage and will be shown on next open
     commit(SET_CURRENT_USER, {
       has_email: false,
       has_phone_number: false,
       identifier: null,
-      name: userDataToPreserve.name,
-      email: userDataToPreserve.email,
-      phone_number: userDataToPreserve.phone_number,
+      name: '',
+      email: '',
+      phone_number: '',
     });
 
-    // 2. Remove axios auth header
+    // Remove axios auth header
     removeHeader('X-Auth-Token');
 
-    // 3. Save user data to localStorage before clearing
-    if (userDataToPreserve.name || userDataToPreserve.email) {
-      localStorage.setItem(
-        'chatwoot_user_data',
-        JSON.stringify(userDataToPreserve)
-      );
-    }
+    // Wipe conversation-related storage only (keep user_data for form pre-fill)
+    const explicitKeys = [
+      'cwc-unique-id',
+      'cwc-session',
+      'cw_contact_uuid',
+      'cw_conversation',
+      'cw_conversation_id',
+      'chatwoot_contact_id',
+      'chatwoot_conversation_id',
+      'chatwootContactIdentity',
+      'user_color',
+      'user_uuid',
+      'cw_d',
+      'cw_auth_token',
+      'widget_auth_token',
+    ];
+    explicitKeys.forEach(k => {
+      localStorage.removeItem(k);
+      sessionStorage.removeItem(k);
+    });
 
-    // 4. Wipe all storage inside the iframe (except user data)
-    clearAllChatwootStorage();
+    [localStorage, sessionStorage].forEach(storage => {
+      Object.keys(storage)
+        .filter(k =>
+          k.includes('chatwoot') ||
+          k.includes('cw_') ||
+          k.includes('cwc') ||
+          k.includes('widget_auth')
+        )
+        // PRESERVE chatwoot_user_data so form can be pre-filled on reopen
+        .filter(k => k !== 'chatwoot_user_data')
+        .forEach(k => storage.removeItem(k));
+    });
 
-    // 5. Restore user data from preserved copy
-    if (userDataToPreserve.name || userDataToPreserve.email) {
-      localStorage.setItem(
-        'chatwoot_user_data',
-        JSON.stringify(userDataToPreserve)
+    document.cookie.split(';').forEach(cookie => {
+      const name = cookie.split('=')[0].trim();
+      if (
+        name.includes('chatwoot') ||
+        name.includes('cw_') ||
+        name.includes('cwc') ||
+        name === 'cw_d'
+      ) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${location.hostname}`;
+      }
+    });
+
+    try {
+      const url = new URL(window.location.href);
+      ['cw_conversation', 'cw_contact', 'cw_d', 'website_token'].forEach(p =>
+        url.searchParams.delete(p)
       );
-    }
+      [...url.searchParams.keys()]
+        .filter(k => k.startsWith('cw_') || k.startsWith('cwc'))
+        .forEach(k => url.searchParams.delete(k));
+      window.history.replaceState({}, '', url.toString());
+    } catch (_) {}
+
+    console.log('✅ Conversation cleared (user data preserved for next session)');
 
     // 6. Tell the parent page to fully destroy + reload the SDK.
     //    This is the critical step — the iframe src URL itself carries

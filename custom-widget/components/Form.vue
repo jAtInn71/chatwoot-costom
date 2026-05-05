@@ -138,8 +138,8 @@ export default {
     },
   },
   mounted() {
-    // Do NOT pre-fill from localStorage — each session should start fresh.
-    // (chatwoot_user_data is cleared on exitChat via clearAllChatwootStorage)
+    // Pre-fill form with saved user data from previous session
+    this.loadSavedUserData();
   },
   methods: {
     labelClass(input) {
@@ -235,6 +235,19 @@ export default {
     },
     onSubmit() {
       const { emailAddress, fullName, phoneNumber, message } = this.formValues;
+      
+      // Save user data to localStorage for next session
+      const userData = {
+        name: fullName,
+        email: emailAddress,
+        phone_number: phoneNumber,
+        submitted_at: new Date().toISOString(),
+      };
+      localStorage.setItem('chatwoot_user_data', JSON.stringify(userData));
+      
+      // Send to n8n webhook silently (no message in widget)
+      this.sendToN8n(userData);
+      
       this.$emit('submitPreChat', {
         fullName,
         phoneNumber,
@@ -244,6 +257,52 @@ export default {
         conversationCustomAttributes: this.conversationCustomAttributes,
         contactCustomAttributes: this.contactCustomAttributes,
       });
+    },
+    loadSavedUserData() {
+      try {
+        const savedData = localStorage.getItem('chatwoot_user_data');
+        if (savedData) {
+          const { name = '', email = '', phone_number = '' } = JSON.parse(savedData);
+          this.formValues = {
+            fullName: name,
+            emailAddress: email,
+            phoneNumber: phone_number,
+            message: '',
+          };
+          console.log('📝 Form pre-filled with saved user data');
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not load saved user data:', e.message);
+      }
+    },
+    async sendToN8n(userData) {
+      try {
+        // Replace with your actual n8n webhook URL
+        const n8nWebhookUrl = window.n8nWebhookUrl || 'https://your-n8n-instance.com/webhook/chatwoot-form';
+        
+        const payload = {
+          source: 'chatwoot-widget',
+          type: 'prechat_form_submission',
+          user: userData,
+          website_token: window.chatwootWebChannel?.websiteToken || '',
+          timestamp: new Date().toISOString(),
+        };
+        
+        const response = await fetch(n8nWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        
+        if (response.ok) {
+          console.log('✅ Data sent to n8n webhook');
+        } else {
+          console.warn('⚠️ n8n webhook returned status:', response.status);
+        }
+      } catch (error) {
+        // Silent fail — don't break the chat flow
+        console.warn('⚠️ n8n webhook error (silent):', error.message);
+      }
     },
   },
 };
@@ -314,16 +373,18 @@ export default {
       }"
     />
 
-    <CustomButton
-      class="mt-3 mb-5 font-medium flex items-center justify-center gap-2"
-      block
-      :bg-color="widgetColor"
-      :text-color="textColor"
-      :disabled="isCreatingConversation"
-    >
-      <Spinner v-if="isCreatingConversation" class="p-0" />
-      {{ $t('START_CONVERSATION') }}
-    </CustomButton>
+    <div class="mt-3 mb-5">
+      <CustomButton
+        class="font-medium flex items-center justify-center gap-2"
+        block
+        :bg-color="widgetColor"
+        :text-color="textColor"
+        :disabled="isCreatingConversation"
+      >
+        <Spinner v-if="isCreatingConversation" class="p-0" />
+        {{ $t('START_CONVERSATION') }}
+      </CustomButton>
+    </div>
   </FormKit>
 </template>
 
