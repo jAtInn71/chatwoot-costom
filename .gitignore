@@ -2,4 +2,6 @@
 *.bak2
 *.map
 .env
-custom-widget/assets/vite/
+.claude/
+custom/widget/assets/vite/
+logs/

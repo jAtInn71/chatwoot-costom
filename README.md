@@ -26,6 +26,6 @@ This is a customized Chatwoot instance featuring a built-in AI Voice Assistant p
 The ElevenLabs Agent ID is currently hardcoded to `agent_6601kc1fqeecfc88s7d52jde0syq`. 
 
 To change the Agent ID:
-1. Update `custom-widget/store/modules/appConfig.js`.
+1. Update `custom/widget/store/modules/appConfig.js`.
 2. Rebuild the frontend assets (requires Node.js environment).
 3. Rebuild the Docker image.
