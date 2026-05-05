@@ -37,8 +37,38 @@ export default {
     if (this.$route.name === 'home') {
       this.startConversation();
     }
+
+    // Watch for widget visibility changes to reset form on reopen
+    this.watchWidgetVisibility();
+  },
+  beforeUnmount() {
+    // Clean up visibility observer when component unmounts
+    if (this.visibilityObserver) {
+      this.visibilityObserver();
+    }
   },
   methods: {
+    watchWidgetVisibility() {
+      // Detect when widget becomes visible again and reset form
+      let wasHidden = document.hidden;
+      
+      const handleVisibilityChange = () => {
+        const isNowVisible = !document.hidden;
+        // If widget was hidden and is now visible, reset the conversation
+        if (wasHidden && isNowVisible && this.$route.name === 'messages') {
+          console.log('📱 Widget reopened - resetting to pre-chat form');
+          this.startConversation();
+        }
+        wasHidden = !isNowVisible;
+      };
+
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      // Store cleanup function
+      this.visibilityObserver = () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    },
     startConversation() {
       // Show pre-chat form if:
       //   1. Pre-chat form is enabled, AND
@@ -47,6 +77,7 @@ export default {
       // IMPORTANT: On second close/open, always show the form if pre-chat is enabled
       if (this.preChatFormEnabled) {
         // Always show form if no conversation or contact data cleared
+        // This ensures fresh start on every widget open
         if (!this.conversationSize || !this.hasKnownContact) {
           return this.router.replace({ name: 'prechat-form' });
         }

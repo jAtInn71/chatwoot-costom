@@ -89,6 +89,13 @@ export const actions = {
       const { data } = await ContactsAPI.get();
       commit(SET_CURRENT_USER, data);
     } catch (error) {
+      // If 404, conversation is invalid — clear stale data
+      if (error.response?.status === 404) {
+        console.warn('⚠️ Contact not found (404) - clearing stale data');
+        // Clear conversation-related session data
+        sessionStorage.removeItem('cw_contact_uuid');
+        sessionStorage.removeItem('cw_conversation_id');
+      }
       // Ignore error
     }
   },
@@ -261,13 +268,39 @@ export const actions = {
 
     console.log('✅ Conversation cleared (user data preserved for next session)');
 
-    // 6. Tell the parent page to fully destroy + reload the SDK.
-    //    This is the critical step — the iframe src URL itself carries
-    //    the ?cw_conversation=JWT param that makes the server recognise
-    //    the old contact and skip the pre-chat form. The only way to
-    //    remove it is to let the parent tear down the whole iframe and
-    //    re-inject the SDK script fresh (no JWT in the new src).
+    // Tell the parent page to fully destroy + reload the SDK
     sendMessage({ event: 'exitChat' });
+  },
+
+  resetOnApiError: ({ commit }) => {
+    // Called when API returns 404 — clear stale session and reset to pre-chat
+    console.warn('🔄 Resetting widget due to stale conversation (404)');
+    
+    // Clear conversation state
+    commit(SET_CURRENT_USER, {
+      has_email: false,
+      has_phone_number: false,
+      identifier: null,
+      name: '',
+      email: '',
+      phone_number: '',
+    });
+
+    // Clear stale session/conversation IDs
+    const staleKeys = [
+      'cw_contact_uuid',
+      'cw_conversation',
+      'cw_conversation_id',
+      'chatwoot_contact_id',
+      'chatwoot_conversation_id',
+      'cw_d',
+    ];
+    
+    [localStorage, sessionStorage].forEach(storage => {
+      staleKeys.forEach(k => storage.removeItem(k));
+    });
+
+    console.log('✅ Widget reset - user can now start fresh conversation');
   },
 };
 

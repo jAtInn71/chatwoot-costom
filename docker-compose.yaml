@@ -57,7 +57,6 @@ services:
       - POSTGRES_DATABASE=chatwoot_prod
       - REDIS_URL=redis://:password@redis:6379
       - FRONTEND_URL=https://gratifiedly-untentacled-janella.ngrok-free.dev
-      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}  # n8n webhook for prechat form submissions
     networks:
       - chatwoot-network
     command: >
@@ -105,7 +104,6 @@ services:
       - POSTGRES_DATABASE=chatwoot_prod
       - REDIS_URL=redis://:password@redis:6379
       - FRONTEND_URL=https://gratifiedly-untentacled-janella.ngrok-free.dev
-      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}  # n8n webhook for prechat form submissions
     command: bundle exec sidekiq -C config/sidekiq.yml
 
 volumes:

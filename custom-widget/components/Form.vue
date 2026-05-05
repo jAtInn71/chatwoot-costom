@@ -277,8 +277,14 @@ export default {
     },
     async sendToN8n(userData) {
       try {
-        // Replace with your actual n8n webhook URL
-        const n8nWebhookUrl = window.n8nWebhookUrl || 'https://your-n8n-instance.com/webhook/chatwoot-form';
+        // Read n8n webhook URL from dashboard widget options
+        // Admins set this in: Inbox Settings → [Your Inbox] → Configurations → Custom Settings
+        const n8nWebhookUrl = this.options?.n8n_webhook_url || this.options?.webhook_url;
+        
+        if (!n8nWebhookUrl) {
+          console.log('⏭️ n8n webhook not configured in dashboard - skipping');
+          return;
+        }
         
         const payload = {
           source: 'chatwoot-widget',
