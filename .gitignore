@@ -3,5 +3,6 @@
 *.map
 .env
 .claude/
+.harness/
 custom/widget/assets/vite/
 logs/
