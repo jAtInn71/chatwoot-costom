@@ -27,6 +27,26 @@
   // Shared flag — true while a voice call is in progress
   window._cwVoiceActive = false;
 
+  // ── Auto-detect hard refresh vs SPA ─────────────────────────────────────
+  // sessionStorage survives hard refreshes but window.* vars reset on reload.
+  // So: if this script runs AND sessionStorage already has our flag →
+  // a full page reload just happened → hard refresh site.
+  // On SPA sites the _cwVoiceInstalled guard above exits early on nav,
+  // so this block only runs once per page-load cycle.
+  var SESSION_LOAD_KEY = 'cw_sdk_loaded';
+  var HARD_REFRESH_CACHE_KEY = 'cw_site_hard_refresh';
+  (function detectSiteType() {
+    var manual = window.chatwootSettings && window.chatwootSettings.hardRefreshSite;
+    if (manual === true || manual === false) return; // manual override — skip auto-detect
+
+    var prevLoaded = sessionStorage.getItem(SESSION_LOAD_KEY);
+    if (prevLoaded) {
+      // Script running fresh despite sessionStorage flag = hard refresh happened
+      localStorage.setItem(HARD_REFRESH_CACHE_KEY, 'true');
+    }
+    sessionStorage.setItem(SESSION_LOAD_KEY, '1');
+  })();
+
   // localStorage key for widget open/close state
   var WIDGET_OPEN_KEY = 'cw_widget_open';
 
@@ -183,11 +203,15 @@
     // Primary: use Chatwoot's own open/close events (zero polling overhead).
     window.addEventListener('chatwoot:on-open', function () {
       try { localStorage.setItem(WIDGET_OPEN_KEY, 'true'); } catch (_) {}
+      // SPA mode: call lives inside the widget — hide End Call when widget opens.
+      if (!isHardRefreshSite() && window._cwVoiceActive) hideBtn();
       // Send prefill data every time widget opens (in case form re-renders)
       setTimeout(sendPrefillData, 300);
     });
     window.addEventListener('chatwoot:on-close', function () {
       try { localStorage.setItem(WIDGET_OPEN_KEY, 'false'); } catch (_) {}
+      // SPA mode: call still active but widget closed — show End Call button.
+      if (!isHardRefreshSite() && window._cwVoiceActive) showBtn();
     });
 
     // Fallback: poll every second in case events are not fired in this build.
@@ -201,6 +225,22 @@
     }, 1000);
 
   });
+
+  // Send hardRefreshSite flag to widget iframe so ElevenLabsVoiceButton
+  // can decide whether to open a popup window or run the call inline.
+  function sendConfigToWidget() {
+    var hard = isHardRefreshSite();
+    document.querySelectorAll('iframe').forEach(function (f) {
+      try {
+        f.contentWindow.postMessage({ event: 'cw-config-update', hardRefreshSite: hard }, '*');
+      } catch (_) {}
+    });
+  }
+  window.addEventListener('chatwoot:ready', function () {
+    setTimeout(sendConfigToWidget, 500);
+  });
+  // Also send it once immediately (in case widget is already mounted)
+  setTimeout(sendConfigToWidget, 1200);
 
   // ════════════════════════════════════════════════════════════════════════
   // FEATURE 2 — Floating "End Call" button
@@ -443,11 +483,25 @@
   // postMessage listener — bridges Features 2, 3 & 4
   // ════════════════════════════════════════════════════════════════════════
 
+  // Priority: manual chatwootSettings override → auto-detected cache → default false
+  function isHardRefreshSite() {
+    var manual = window.chatwootSettings && window.chatwootSettings.hardRefreshSite;
+    if (manual === true)  return true;
+    if (manual === false) return false;
+    return localStorage.getItem(HARD_REFRESH_CACHE_KEY) === 'true';
+  }
+
   function applyVoiceState(isActive, autoOpen) {
     window._cwVoiceActive = !!isActive;
-    // Floating End Call button disabled — popup is the only UI
-    // showBtn / hideBtn intentionally not called
-    if (isActive && autoOpen) autoOpenWidget();
+    if (isActive) {
+      var widgetOpen = (localStorage.getItem(WIDGET_OPEN_KEY) === 'true');
+      // Hard refresh: always show End Call (popup is a separate window, not in widget).
+      // SPA: show End Call only when widget is closed (call lives inside the widget).
+      if (isHardRefreshSite() || !widgetOpen) showBtn();
+      if (autoOpen) autoOpenWidget();
+    } else {
+      hideBtn();
+    }
   }
 
   // ════════════════════════════════════════════════════════════════════════

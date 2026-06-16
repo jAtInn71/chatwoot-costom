@@ -33,6 +33,11 @@ let _broadcast = null;
 let _pendingConfigPromise = null;
 let _pendingConfig = null;
 
+// Inline call (SPA mode — no popup window)
+let _inlineConversation = null;
+let _inlineHeartbeatTimer = null;
+let _inlineBackendHeartbeatTimer = null;
+
 const HEARTBEAT_KEY        = 'cw_voice_popup_heartbeat';
 const HEARTBEAT_MAX_AGE_MS = 4000;
 
@@ -64,6 +69,15 @@ export default {
     return {
       isConnecting: false,
       isCallActive: false,
+      // Set via postMessage from sdk-floating-btn.js on parent page.
+      // true  → open popup window (call survives hard refreshes).
+      // false → run call inline inside the widget (SPA sites).
+      hardRefreshSite: false,
+      // Inline call state (SPA mode only)
+      inlineStatus: 'idle', // idle | connecting | connected | ended | error
+      inlineStatusText: 'Connecting…',
+      inlineSpeaking: false,
+      inlineConfig: null,
     };
   },
 
@@ -91,6 +105,16 @@ export default {
       if (this.isCallActive) return this.$t('VOICE_AGENT.END_CALL');
       if (this.isConnecting) return this.$t('VOICE_AGENT.CONNECTING');
       return this.$t('VOICE_AGENT.START_CALL');
+    },
+    showInlineCallPanel() {
+      return !this.hardRefreshSite && this.inlineStatus !== 'idle';
+    },
+    inlineAgentName() {
+      return this.inlineConfig?.agentName || 'AI Assistant';
+    },
+    inlineAvatarSrc() {
+      if (this.inlineConfig?.avatar) return this.inlineConfig.avatar;
+      return this._makeFallbackAvatar(this.inlineAgentName, this.inlineConfig?.color || '#1f93ff');
     },
   },
 
@@ -134,6 +158,8 @@ export default {
     if (this._mountRetry2) clearTimeout(this._mountRetry2);
     if (this._mountRetry3) clearTimeout(this._mountRetry3);
     if (this._keepAliveInterval) { clearInterval(this._keepAliveInterval); this._keepAliveInterval = null; }
+    this._stopInlineHeartbeat();
+    this._stopInlineBackendHeartbeat();
     document.removeEventListener('visibilitychange', this._onVisibilityChange);
     window.removeEventListener('storage', this._onStorageEvent);
   },
@@ -143,6 +169,16 @@ export default {
 
     handleClick() {
       if (this.isConnecting) return;
+      if (!this.hardRefreshSite) {
+        // SPA mode: button click while active = end inline call
+        if (this.isCallActive || this.inlineStatus === 'connected') {
+          this.endInlineCall();
+          return;
+        }
+        this.startCall();
+        return;
+      }
+      // Hard refresh (popup) mode
       if (this.isCallActive && _popupRef && !_popupRef.closed) {
         try { _popupRef.focus(); } catch (_) {}
         return;
@@ -152,24 +188,25 @@ export default {
 
     async startCall() {
       if (!this.hasElevenLabsVoiceEnabled) return;
+      // Route to inline (SPA) or popup (hard refresh)
+      if (!this.hardRefreshSite) {
+        await this.startInlineCall();
+        return;
+      }
 
-      // Guard — if backend says a call is already active for this visitor
-      // (e.g. they have the popup open on another page/tab), focus that
-      // instead of starting a SECOND call.
+      // ── Popup mode (hard refresh sites) ────────────────────────────────
+      // Guard — if backend says a call is already active, focus existing popup.
       try {
         const cwConv = this.getCwConversationToken();
         let guardUrl = buildConvUrl('/api/v1/widget/conversations/voice_call_active');
         if (cwConv) guardUrl += `&cw_conversation=${encodeURIComponent(cwConv)}`;
         const { data } = await API.get(guardUrl);
         if (data?.active) {
-          // Only block if popup is ACTUALLY open (same window) — not just a stale heartbeat.
           if (_popupRef && !_popupRef.closed) {
             vLog('Popup is open — focusing it');
             try { _popupRef.focus(); } catch (_) {}
             return;
           }
-          // No popup here — use backend heartbeat timestamp to decide.
-          // localStorage is unreliable due to iframe storage partitioning.
           const hbAge = data.last_heartbeat
             ? Date.now() - new Date(data.last_heartbeat).getTime()
             : Infinity;
@@ -179,33 +216,22 @@ export default {
             alert('You already have a voice call open in another tab. Please end it there before starting a new one.');
             return;
           }
-          // Heartbeat is stale — proceed with new call.
           vLog('Backend active but heartbeat is ' + Math.round(hbAge/1000) + 's old — likely stale, proceeding');
-          // Reset UI state so button shows correctly after we start
           this.isCallActive = false;
           this.setActive(false);
         }
-      } catch (_) { /* network blip — proceed with call */ }
+      } catch (_) {}
 
       this.isConnecting = true;
       this.setConnecting(true);
 
-      // Detect mobile — popups behave poorly on phones (open as full tab).
-      // On mobile we still open the same URL, but the popup CSS has a
-      // dedicated mobile-fullscreen media query that scales the UI up so
-      // it fills the screen comfortably.
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-
-      // Compact popup — card is 240px wide, ~310px tall content.
-      // Window 280×420 leaves ~40px buffer on all sides accounting for
-      // browser chrome (Edge title bar + address bar = ~85px height).
       const w = isMobile ? 200 : 260;
       const h = isMobile ? 400 : 370;
       const left = Math.max(0, Math.round((screen.availWidth  - w) / 2));
       const top  = Math.max(0, Math.round((screen.availHeight - h) / 2));
       const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
 
-      // Include website_token in URL so popup has it even before config message arrives.
       const _wt = WEBSITE_TOKEN || '';
       const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
       _popupRef = window.open(cleanUrl, 'cwVoiceCall', features);
@@ -229,6 +255,222 @@ export default {
       this.setActive(true);
 
       vLog('Popup opened ✓ (clean URL, config via postMessage)');
+    },
+
+    // ── Inline call (SPA mode — no popup window) ───────────────────────────
+    async startInlineCall() {
+      if (!this.hasElevenLabsVoiceEnabled) return;
+
+      // Guard against duplicate active call
+      try {
+        const cwConv = this.getCwConversationToken();
+        let guardUrl = buildConvUrl('/api/v1/widget/conversations/voice_call_active');
+        if (cwConv) guardUrl += `&cw_conversation=${encodeURIComponent(cwConv)}`;
+        const { data } = await API.get(guardUrl);
+        if (data?.active) {
+          const hbAge = data.last_heartbeat
+            ? Date.now() - new Date(data.last_heartbeat).getTime()
+            : Infinity;
+          if (hbAge < 10000) {
+            alert('You already have a voice call active. Please end it first.');
+            return;
+          }
+        }
+      } catch (_) {}
+
+      this.isConnecting = true;
+      this.inlineStatus = 'connecting';
+      this.inlineStatusText = 'Requesting mic…';
+      this.setConnecting(true);
+
+      try {
+        const config = await this._buildConfig();
+        this.inlineConfig = config;
+
+        // Mic permission check
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+
+        this.inlineStatusText = 'Loading…';
+        const mod = await import('https://esm.sh/@11labs/client');
+        const Conversation = mod.Conversation;
+        if (!Conversation) throw new Error('ElevenLabs SDK did not expose Conversation');
+
+        this.inlineStatusText = 'Connecting…';
+
+        _inlineConversation = await Conversation.startSession({
+          signedUrl: config.signedUrl,
+          dynamicVariables: {
+            chatwoot_conversation_id:  config.cwConversationId  || '',
+            chatwoot_conversation_url: config.cwConversationUrl || '',
+            customer_name:             config.agentName         || 'Customer',
+            website:                   config.brand             || '',
+          },
+
+          onConnect: () => {
+            this.isConnecting = false;
+            this.isCallActive = true;
+            this.inlineStatus = 'connected';
+            this.inlineStatusText = 'Connected';
+            this.setActive(true);
+            this.setConnecting(false);
+            this._startInlineHeartbeat();
+            this._startInlineBackendHeartbeat();
+            // Notify parent page so floating End Call button logic can run
+            try {
+              window.parent.postMessage({ event: 'cw-voice-call-started' }, '*');
+            } catch (_) {}
+            try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
+            // Link ElevenLabs conversation ID to Chatwoot conversation
+            try {
+              const elConvId = typeof _inlineConversation.getId === 'function'
+                ? _inlineConversation.getId()
+                : _inlineConversation.conversationId || null;
+              if (elConvId) {
+                const cwConv = this.getCwConversationToken();
+                let url = buildConvUrl('/api/v1/widget/conversations/voice_link_elevenlabs');
+                if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
+                API.post(url, { elevenlabs_conversation_id: elConvId }).catch(() => {});
+              }
+            } catch (_) {}
+          },
+
+          onDisconnect: () => this.handleInlineCallEnded('Call ended'),
+
+          onError: (err) => {
+            const msg = (err && (err.message || err.toString())) || 'Unknown error';
+            console.error('[VOICE-INLINE] error:', msg);
+            this.inlineStatus = 'error';
+            this.inlineStatusText = 'Error';
+            this.isConnecting = false;
+            this.setConnecting(false);
+          },
+
+          onMessage: ({ message, source }) => {
+            const text = (message || '').toString().trim();
+            if (!text) return;
+            const cwConv = this.getCwConversationToken();
+            let url = buildConvUrl('/api/v1/widget/conversations/voice_transcript');
+            if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
+            API.post(url, { source, content: text }).catch(() => {});
+            try { this.$store.dispatch('conversation/fetchOldConversations'); } catch (_) {}
+            try { this.$store.dispatch('message/fetchAllMessages'); } catch (_) {}
+          },
+
+          onModeChange: (mode) => {
+            this.inlineSpeaking = mode === 'speaking';
+          },
+        });
+
+      } catch (error) {
+        const msg = (error && error.message) || 'unknown';
+        console.error('[VOICE-INLINE] startInlineCall failed:', msg);
+        this.isConnecting = false;
+        this.inlineStatus = 'error';
+        this.inlineStatusText = (error && (error.name === 'NotAllowedError' || error.name === 'NotFoundError'))
+          ? 'Mic denied' : 'Failed to connect';
+        this.setConnecting(false);
+        // Auto-dismiss error panel after 3s
+        setTimeout(() => { if (this.inlineStatus === 'error') this.inlineStatus = 'idle'; }, 3000);
+      }
+    },
+
+    async endInlineCall() {
+      if (!_inlineConversation) {
+        this.handleInlineCallEnded('Call ended');
+        return;
+      }
+      this.inlineStatusText = 'Ending…';
+      try { await _inlineConversation.endSession(); }
+      catch (e) { console.warn('[VOICE-INLINE] endSession threw:', e?.message); }
+      setTimeout(() => {
+        if (this.isCallActive) this.handleInlineCallEnded('Call ended');
+      }, 1500);
+    },
+
+    handleInlineCallEnded(label) {
+      this.isCallActive = false;
+      this.isConnecting = false;
+      this.inlineStatus = 'ended';
+      this.inlineStatusText = label || 'Call ended';
+      this.inlineSpeaking = false;
+      _inlineConversation = null;
+
+      this._stopInlineHeartbeat();
+      this._stopInlineBackendHeartbeat();
+
+      try {
+        const cwConv = this.getCwConversationToken();
+        let url = buildConvUrl('/api/v1/widget/conversations/voice_call_ended');
+        if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
+        API.post(url, {}).catch(() => {});
+      } catch (_) {}
+
+      try { localStorage.setItem('cw_voice_active', '0'); } catch (_) {}
+      this.setActive(false);
+      this.setConnecting(false);
+      try { window.parent.postMessage({ event: 'cw-voice-call-ended' }, '*'); } catch (_) {}
+
+      if (this._keepAliveInterval) { clearInterval(this._keepAliveInterval); this._keepAliveInterval = null; }
+      // Dismiss panel after short delay so user sees "ended" state
+      setTimeout(() => { this.inlineStatus = 'idle'; }, 1500);
+    },
+
+    _startInlineHeartbeat() {
+      if (_inlineHeartbeatTimer) return;
+      const writeHb = () => {
+        try { localStorage.setItem('cw_voice_popup_heartbeat', String(Date.now())); } catch (_) {}
+        const ch = getBroadcastChannel();
+        if (ch) {
+          try { ch.postMessage({ type: 'heartbeat', timestamp: Date.now(), active: true }); } catch (_) {}
+        }
+      };
+      writeHb();
+      _inlineHeartbeatTimer = setInterval(writeHb, 1500);
+    },
+
+    _stopInlineHeartbeat() {
+      if (_inlineHeartbeatTimer) { clearInterval(_inlineHeartbeatTimer); _inlineHeartbeatTimer = null; }
+      try { localStorage.removeItem('cw_voice_popup_heartbeat'); } catch (_) {}
+      const ch = getBroadcastChannel();
+      if (ch) { try { ch.postMessage({ type: 'ended', timestamp: Date.now() }); } catch (_) {} }
+    },
+
+    _startInlineBackendHeartbeat() {
+      if (_inlineBackendHeartbeatTimer) return;
+      const sendHb = () => {
+        if (!this.isCallActive) return;
+        const cwConv = this.getCwConversationToken();
+        let url = buildConvUrl('/api/v1/widget/conversations/voice_heartbeat');
+        if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
+        API.post(url, {})
+          .then(r => r?.data)
+          .then(d => {
+            if (d && d.end_requested) this.handleInlineCallEnded('Remote end requested');
+          })
+          .catch(() => {});
+      };
+      sendHb();
+      _inlineBackendHeartbeatTimer = setInterval(sendHb, 3000);
+    },
+
+    _stopInlineBackendHeartbeat() {
+      if (_inlineBackendHeartbeatTimer) { clearInterval(_inlineBackendHeartbeatTimer); _inlineBackendHeartbeatTimer = null; }
+    },
+
+    _makeFallbackAvatar(name, color) {
+      const initials = (name || 'AI')
+        .split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">` +
+        `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">` +
+        `<stop offset="0%" stop-color="${color}" stop-opacity="1"/>` +
+        `<stop offset="100%" stop-color="${color}" stop-opacity="0.82"/>` +
+        `</linearGradient></defs>` +
+        `<circle cx="50" cy="50" r="50" fill="url(#g)"/>` +
+        `<text x="50" y="62" text-anchor="middle" font-family="-apple-system, sans-serif" font-size="36" font-weight="600" fill="white">${initials}</text>` +
+        `</svg>`;
+      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
     },
 
     endCall() {
@@ -263,10 +505,15 @@ export default {
 
     resetCallState() {
       _popupRef = null;
+      _inlineConversation = null;
       this.isCallActive = false;
       this.isConnecting = false;
+      this.inlineStatus = 'idle';
+      this.inlineSpeaking = false;
       this.setActive(false);
       this.setConnecting(false);
+      this._stopInlineHeartbeat();
+      this._stopInlineBackendHeartbeat();
       if (this._keepAliveInterval) {
         clearInterval(this._keepAliveInterval);
         this._keepAliveInterval = null;
@@ -430,6 +677,23 @@ export default {
     onWindowMessage(e) {
       const data = e?.data;
       if (!data || typeof data !== 'object') return;
+
+      // Config pushed from sdk-floating-btn.js (parent page)
+      if (data.event === 'cw-config-update') {
+        this.hardRefreshSite = !!data.hardRefreshSite;
+        return;
+      }
+
+      // Floating End Call button on parent page clicked (SPA mode)
+      if (data.event === 'end-voice-call-from-parent') {
+        if (!this.hardRefreshSite && (_inlineConversation || this.isCallActive)) {
+          this.endInlineCall();
+        } else {
+          this.endCall();
+        }
+        return;
+      }
+
       if (data.source !== 'cw-voice-popup') return;
 
       switch (data.event) {
@@ -547,6 +811,59 @@ export default {
 </script>
 
 <template>
+  <!-- Inline call overlay (SPA mode — no popup window) -->
+  <Teleport to="body">
+    <div
+      v-if="showInlineCallPanel"
+      class="cw-vi-overlay"
+      :class="{ 'cw-vi-speaking': inlineSpeaking }"
+    >
+      <div class="cw-vi-header">
+        <span class="cw-vi-title">Voice Call</span>
+        <span v-if="inlineStatus === 'connected'" class="cw-vi-live">
+          <span class="cw-vi-live-dot" />
+          LIVE
+        </span>
+      </div>
+
+      <div class="cw-vi-body">
+        <div class="cw-vi-avatar-wrap">
+          <div class="cw-vi-ring cw-vi-ring1" />
+          <div class="cw-vi-ring cw-vi-ring2" />
+          <img
+            class="cw-vi-avatar"
+            :src="inlineAvatarSrc"
+            alt="Agent"
+          />
+        </div>
+        <div class="cw-vi-name">{{ inlineAgentName }}</div>
+        <div class="cw-vi-role">Voice Assistant</div>
+        <div class="cw-vi-badge" :data-state="inlineStatus">
+          <span class="cw-vi-badge-dot" />
+          <span>{{ inlineStatusText }}</span>
+        </div>
+      </div>
+
+      <div class="cw-vi-footer">
+        <button
+          class="cw-vi-end-btn"
+          :disabled="inlineStatus !== 'connected'"
+          @click="endInlineCall"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13">
+            <path
+              d="M3.5 14.5c5.5-5 11.5-5 17 0 .8.7.9 2 0 2.7l-2.1 1.6c-.5.4-1.2.4-1.7 0l-2-1.7
+                 a1.5 1.5 0 0 1-.5-1.1V14a9.8 9.8 0 0 0-4.4 0v0c0 .4-.2.8-.5 1.1l-2 1.6c-.5.4-1.2.4-1.7 0
+                 L3.5 15c-.5-.6-.4-1.7 0-2.5Z"
+              transform="rotate(135 12 12)"
+            />
+          </svg>
+          End Call
+        </button>
+      </div>
+    </div>
+  </Teleport>
+
   <div class="elevenlabs-container">
     <button
       v-if="shouldShowButton"
@@ -642,5 +959,174 @@ export default {
 @keyframes pulse-active {
   0%,  100% { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.45); }
   50%        { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.08); }
+}
+
+/* ── Inline call overlay (SPA mode) ────────────────────────────────────── */
+.cw-vi-overlay {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.cw-vi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px 9px;
+  border-bottom: 0.5px solid rgba(15, 23, 42, 0.10);
+  flex-shrink: 0;
+}
+.cw-vi-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+.cw-vi-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e8533a;
+}
+.cw-vi-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e8533a;
+  animation: cw-vi-pulse-dot 1.4s ease-in-out infinite;
+}
+@keyframes cw-vi-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.8); }
+}
+.cw-vi-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px 8px;
+  min-height: 0;
+}
+.cw-vi-avatar-wrap {
+  position: relative;
+  width: min(38vmin, 120px);
+  height: min(38vmin, 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: min(3vmin, 14px);
+  flex-shrink: 0;
+}
+.cw-vi-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid rgba(66, 153, 225, 0.22);
+}
+.cw-vi-ring1 { width: 100%; height: 100%; }
+.cw-vi-ring2 { width: 80%; height: 80%; border-color: rgba(66, 153, 225, 0.40); }
+.cw-vi-speaking .cw-vi-ring2 { animation: cw-vi-pulse-ring 1.6s ease-in-out infinite; }
+.cw-vi-speaking .cw-vi-ring1 { animation: cw-vi-pulse-ring 1.6s ease-in-out infinite 0.4s; }
+@keyframes cw-vi-pulse-ring {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.04); }
+}
+.cw-vi-avatar {
+  width: 62%;
+  height: 62%;
+  border-radius: 50%;
+  border: 2px solid #3b8fe8;
+  object-fit: cover;
+  background: rgba(66, 153, 225, 0.22);
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  transition: transform 240ms ease, box-shadow 240ms ease;
+}
+.cw-vi-speaking .cw-vi-avatar {
+  transform: scale(1.04);
+  box-shadow: 0 0 0 5px rgba(66, 153, 225, 0.22);
+}
+.cw-vi-name {
+  font-size: clamp(12px, 4vmin, 16px);
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 2px;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+.cw-vi-role {
+  font-size: clamp(10px, 3vmin, 12px);
+  color: #64748b;
+  margin-bottom: min(3vmin, 12px);
+}
+.cw-vi-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: clamp(9px, 2.8vmin, 11px);
+  font-weight: 500;
+}
+.cw-vi-badge[data-state="connecting"] {
+  background: #fffbeb;
+  border: 0.5px solid #fde68a;
+  color: #b45309;
+}
+.cw-vi-badge[data-state="connected"] {
+  background: #edfaf3;
+  border: 0.5px solid #a3e9c0;
+  color: #1b7a47;
+}
+.cw-vi-badge[data-state="ended"],
+.cw-vi-badge[data-state="error"] {
+  background: #f1f5f9;
+  border: 0.5px solid #cbd5e1;
+  color: #64748b;
+}
+.cw-vi-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.cw-vi-footer {
+  padding: 0 14px 10px;
+  flex-shrink: 0;
+}
+.cw-vi-end-btn {
+  width: 100%;
+  background: #e8533a;
+  border: none;
+  border-radius: 24px;
+  color: #fff;
+  font-size: clamp(11px, 3.5vmin, 13px);
+  font-weight: 600;
+  padding: clamp(8px, 2.5vmin, 11px) 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+.cw-vi-end-btn:hover:not(:disabled) { background: #c93f28; }
+.cw-vi-end-btn:active:not(:disabled) { transform: scale(0.98); }
+.cw-vi-end-btn:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
 }
 </style>
