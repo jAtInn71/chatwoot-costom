@@ -50,6 +50,23 @@ export default {
       customBubbleIconUrl: '',
       customBubbleIconSize: 60,
       isUpdatingBubbleIcon: false,
+      widgetBgColor: '',
+      widgetBgImageUrl: '',
+      widgetFontFamily: '',
+      welcomeHeadingColor: '',
+      welcomeHeadingSize: 24,
+      welcomeTaglineColor: '',
+      welcomeTaglineSize: 14,
+      onlineStatusColor: '',
+      replyTimeColor: '',
+      ctaBgColor: '',
+      ctaTextColor: '',
+      botBubbleBgColor: '',
+      botBubbleTextColor: '',
+      userBubbleBgColor: '',
+      userBubbleTextColor: '',
+      inputFocusColor: '',
+      isUpdatingAppearance: false,
     };
   },
   validations: {
@@ -94,6 +111,22 @@ export default {
       this.customBrandingUrl = this.inbox.custom_branding_url || '';
       this.customBubbleIconUrl = this.inbox.custom_bubble_icon_url || '';
       this.customBubbleIconSize = this.inbox.custom_bubble_icon_size ?? 60;
+      this.widgetBgColor = this.inbox.widget_bg_color || '';
+      this.widgetBgImageUrl = this.inbox.widget_bg_image_url || '';
+      this.widgetFontFamily = this.inbox.widget_font_family || '';
+      this.welcomeHeadingColor = this.inbox.welcome_heading_color || '';
+      this.welcomeHeadingSize = this.inbox.welcome_heading_size || 24;
+      this.welcomeTaglineColor = this.inbox.welcome_tagline_color || '';
+      this.welcomeTaglineSize = this.inbox.welcome_tagline_size || 14;
+      this.onlineStatusColor = this.inbox.online_status_color || '';
+      this.replyTimeColor = this.inbox.reply_time_color || '';
+      this.ctaBgColor = this.inbox.cta_bg_color || '';
+      this.ctaTextColor = this.inbox.cta_text_color || '';
+      this.botBubbleBgColor = this.inbox.bot_bubble_bg_color || '';
+      this.botBubbleTextColor = this.inbox.bot_bubble_text_color || '';
+      this.userBubbleBgColor = this.inbox.user_bubble_bg_color || '';
+      this.userBubbleTextColor = this.inbox.user_bubble_text_color || '';
+      this.inputFocusColor = this.inbox.input_focus_color || '';
     },
     handleHmacFlag() {
       this.updateInbox();
@@ -208,6 +241,39 @@ export default {
         useAlert(this.$t('INBOX_MGMT.EDIT.API.ERROR_MESSAGE'));
       } finally {
         this.isUpdatingBranding = false;
+      }
+    },
+    async updateAppearanceSettings() {
+      this.isUpdatingAppearance = true;
+      try {
+        const payload = {
+          id: this.inbox.id,
+          formData: false,
+          channel: {
+            widget_bg_color: this.widgetBgColor.trim() || null,
+            widget_bg_image_url: this.widgetBgImageUrl.trim() || null,
+            widget_font_family: this.widgetFontFamily.trim() || null,
+            welcome_heading_color: this.welcomeHeadingColor.trim() || null,
+            welcome_heading_size: this.welcomeHeadingSize ? Number(this.welcomeHeadingSize) : null,
+            welcome_tagline_color: this.welcomeTaglineColor.trim() || null,
+            welcome_tagline_size: this.welcomeTaglineSize ? Number(this.welcomeTaglineSize) : null,
+            online_status_color: this.onlineStatusColor.trim() || null,
+            reply_time_color: this.replyTimeColor.trim() || null,
+            cta_bg_color: this.ctaBgColor.trim() || null,
+            cta_text_color: this.ctaTextColor.trim() || null,
+            bot_bubble_bg_color: this.botBubbleBgColor.trim() || null,
+            bot_bubble_text_color: this.botBubbleTextColor.trim() || null,
+            user_bubble_bg_color: this.userBubbleBgColor.trim() || null,
+            user_bubble_text_color: this.userBubbleTextColor.trim() || null,
+            input_focus_color: this.inputFocusColor.trim() || null,
+          },
+        };
+        await this.$store.dispatch('inboxes/updateInbox', payload);
+        useAlert(this.$t('INBOX_MGMT.EDIT.API.SUCCESS_MESSAGE'));
+      } catch (error) {
+        useAlert(this.$t('INBOX_MGMT.EDIT.API.ERROR_MESSAGE'));
+      } finally {
+        this.isUpdatingAppearance = false;
       }
     },
     async updateVoiceAgentSettings() {
@@ -616,6 +682,225 @@ export default {
         </div>
       </SettingsSection>
       <!-- ─── END CUSTOM BUBBLE ICON ─── -->
+
+      <!-- ───────────────────────────────────────────────
+           WIDGET APPEARANCE SECTION
+      ─────────────────────────────────────────────── -->
+      <SettingsSection
+        title="Widget Appearance"
+        sub-title="Customise fonts, colors, bubble styles, and backgrounds. Leave any field blank to use the default Chatwoot style."
+      >
+        <div class="flex flex-col w-full max-w-3xl gap-6">
+
+          <!-- Background -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-n-slate-12">Background</h4>
+
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-n-slate-11">
+                Widget Background Color
+                <span class="text-n-slate-9 font-normal ml-1">hex, rgb, or gradient — e.g. #ffffff or linear-gradient(135deg,#e0f7fa,#fff)</span>
+              </label>
+              <div class="flex items-center gap-2 max-w-lg">
+                <input
+                  v-model="widgetBgColor"
+                  type="color"
+                  class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5"
+                  title="Pick a solid color"
+                  @input="e => { if(!widgetBgColor.startsWith('linear')) widgetBgColor = e.target.value }"
+                />
+                <input v-model="widgetBgColor" type="text" placeholder="#ffffff" class="chatwoot-input flex-1" />
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-n-slate-11">
+                Background Image URL
+                <span class="text-n-slate-9 font-normal ml-1">direct link to image — covers full widget</span>
+              </label>
+              <input v-model="widgetBgImageUrl" type="url" placeholder="https://yoursite.com/bg.jpg" class="chatwoot-input w-full max-w-lg" />
+            </div>
+
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-n-slate-11">
+                Font Family
+                <span class="text-n-slate-9 font-normal ml-1">e.g. Inter, Roboto, Arial — must be available in visitor's browser</span>
+              </label>
+              <input v-model="widgetFontFamily" type="text" placeholder="Inter" class="chatwoot-input w-full max-w-lg" />
+            </div>
+          </div>
+
+          <!-- Welcome Text -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-n-slate-12">Welcome Text</h4>
+
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">Heading Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="welcomeHeadingColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="welcomeHeadingColor" type="text" placeholder="#111" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+              <div class="flex flex-col gap-1.5 w-36">
+                <label class="text-sm font-medium text-n-slate-11">Heading Size <span class="text-n-slate-9 font-normal">px</span></label>
+                <input v-model.number="welcomeHeadingSize" type="number" min="12" max="48" placeholder="24" class="chatwoot-input w-full" />
+              </div>
+            </div>
+
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">Tagline Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="welcomeTaglineColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="welcomeTaglineColor" type="text" placeholder="#555" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+              <div class="flex flex-col gap-1.5 w-36">
+                <label class="text-sm font-medium text-n-slate-11">Tagline Size <span class="text-n-slate-9 font-normal">px</span></label>
+                <input v-model.number="welcomeTaglineSize" type="number" min="10" max="32" placeholder="14" class="chatwoot-input w-full" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Availability Text -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-n-slate-12">Availability Text</h4>
+
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">"We are online" Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="onlineStatusColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="onlineStatusColor" type="text" placeholder="#22c55e" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">"Typically replies" Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="replyTimeColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="replyTimeColor" type="text" placeholder="#6b7280" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CTA Button -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-n-slate-12">CTA Button (Start / Continue Conversation)</h4>
+
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">
+                  Button Background
+                  <span class="text-n-slate-9 font-normal ml-1">hex or gradient</span>
+                </label>
+                <div class="flex items-center gap-2">
+                  <input v-model="ctaBgColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="ctaBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">Button Text Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="ctaTextColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="ctaTextColor" type="text" placeholder="#ffffff" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+            </div>
+
+            <!-- CTA Preview -->
+            <div v-if="ctaBgColor || ctaTextColor" class="flex items-center gap-3">
+              <span class="text-xs text-n-slate-9">Preview:</span>
+              <button
+                class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium"
+                :style="{ background: ctaBgColor || '#1f93ff', color: ctaTextColor || '#ffffff' }"
+              >
+                Start Conversation
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat Bubbles -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-n-slate-12">Chat Bubbles</h4>
+
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">Bot Bubble Background</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="botBubbleBgColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="botBubbleBgColor" type="text" placeholder="#f3f4f6" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">Bot Bubble Text Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="botBubbleTextColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="botBubbleTextColor" type="text" placeholder="#111827" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+            </div>
+
+            <div class="flex gap-4 flex-wrap">
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">User Bubble Background</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="userBubbleBgColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="userBubbleBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+              <div class="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+                <label class="text-sm font-medium text-n-slate-11">User Bubble Text Color</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="userBubbleTextColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                  <input v-model="userBubbleTextColor" type="text" placeholder="#ffffff" class="chatwoot-input flex-1" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Bubble Preview -->
+            <div v-if="botBubbleBgColor || userBubbleBgColor" class="flex flex-col gap-2 mt-1">
+              <span class="text-xs text-n-slate-9">Preview:</span>
+              <div
+                v-if="botBubbleBgColor"
+                class="rounded-lg px-3 py-2 text-sm w-fit max-w-xs"
+                :style="{ background: botBubbleBgColor, color: botBubbleTextColor || '#111827' }"
+              >
+                Hi! How can I help you today?
+              </div>
+              <div
+                v-if="userBubbleBgColor"
+                class="rounded-lg px-3 py-2 text-sm w-fit max-w-xs self-end"
+                :style="{ background: userBubbleBgColor, color: userBubbleTextColor || '#ffffff' }"
+              >
+                I have a question.
+              </div>
+            </div>
+          </div>
+
+          <!-- Input -->
+          <div class="flex flex-col gap-3">
+            <h4 class="text-sm font-semibold text-n-slate-12">Chat Input</h4>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-n-slate-11">Input Focus Border Color</label>
+              <div class="flex items-center gap-2 max-w-lg">
+                <input v-model="inputFocusColor" type="color" class="h-9 w-10 cursor-pointer rounded border border-n-slate-4 p-0.5" />
+                <input v-model="inputFocusColor" type="text" placeholder="#1f93ff" class="chatwoot-input flex-1" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <NextButton
+              label="Save Appearance"
+              :is-loading="isUpdatingAppearance"
+              @click="updateAppearanceSettings"
+            />
+          </div>
+        </div>
+      </SettingsSection>
+      <!-- ─── END WIDGET APPEARANCE ─── -->
 
     </div>
   </div>

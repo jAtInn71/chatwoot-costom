@@ -122,6 +122,7 @@ export default {
     this.setWidgetColor(widgetColor);
     this.setWidgetColorVariable(widgetColor);
     this.setBrandingConfig({ customBrandingText: customBrandingText || '', customBrandingUrl: customBrandingUrl || '' });
+    this.injectCustomAppearance();
 
     setHeader(window.authToken);
 
@@ -180,6 +181,63 @@ export default {
     ...mapActions('agent', ['fetchAvailableAgents']),
     ...mapActions('contacts', ['clearCurrentUser', 'loadSavedUserData']),
     ...mapActions('voiceAgentConfig', ['fetchVoiceAgentConfig']),
+
+    injectCustomAppearance() {
+      const ch = window.chatwootWebChannel || {};
+      const rules = [];
+
+      if (ch.widgetBgColor) {
+        rules.push(`body,#app{background:${ch.widgetBgColor}!important}`);
+      }
+      if (ch.widgetBgImageUrl) {
+        const u = ch.widgetBgImageUrl.replace(/'/g, "\\'");
+        rules.push(`body,#app{background-image:url('${u}')!important;background-size:cover!important;background-position:center!important}`);
+      }
+      if (ch.widgetFontFamily) {
+        rules.push(`body{font-family:'${ch.widgetFontFamily}',sans-serif!important}`);
+      }
+      if (ch.welcomeHeadingColor || ch.welcomeHeadingSize) {
+        const c = ch.welcomeHeadingColor ? `color:${ch.welcomeHeadingColor}!important;` : '';
+        const s = ch.welcomeHeadingSize ? `font-size:${ch.welcomeHeadingSize}px!important;` : '';
+        rules.push(`#app h2,.welcome-title,.team-availability h2{${c}${s}}`);
+      }
+      if (ch.welcomeTaglineColor || ch.welcomeTaglineSize) {
+        const c = ch.welcomeTaglineColor ? `color:${ch.welcomeTaglineColor}!important;` : '';
+        const s = ch.welcomeTaglineSize ? `font-size:${ch.welcomeTaglineSize}px!important;` : '';
+        rules.push(`#app .welcome-tagline,.team-availability p.tagline{${c}${s}}`);
+      }
+      if (ch.onlineStatusColor) {
+        rules.push(`.availability-status,.team-availability .online-status-text{color:${ch.onlineStatusColor}!important}`);
+      }
+      if (ch.replyTimeColor) {
+        rules.push(`.reply-time,.team-availability .reply-time-text{color:${ch.replyTimeColor}!important}`);
+      }
+      if (ch.ctaBgColor || ch.ctaTextColor) {
+        const bg = ch.ctaBgColor ? `background:${ch.ctaBgColor}!important;` : '';
+        const tc = ch.ctaTextColor ? `color:${ch.ctaTextColor}!important;` : '';
+        rules.push(`.woot-submit-button,.start-conversation-btn,button.new-conversation{${bg}${tc}}`);
+      }
+      if (ch.botBubbleBgColor || ch.botBubbleTextColor) {
+        const bg = ch.botBubbleBgColor ? `background-color:${ch.botBubbleBgColor}!important;` : '';
+        const tc = ch.botBubbleTextColor ? `color:${ch.botBubbleTextColor}!important;` : '';
+        rules.push(`.chat-bubble.agent{${bg}${tc}}`);
+      }
+      if (ch.userBubbleBgColor || ch.userBubbleTextColor) {
+        const bg = ch.userBubbleBgColor ? `background-color:${ch.userBubbleBgColor}!important;` : '';
+        const tc = ch.userBubbleTextColor ? `color:${ch.userBubbleTextColor}!important;` : '';
+        rules.push(`.chat-bubble.user{${bg}${tc}}`);
+      }
+      if (ch.inputFocusColor) {
+        rules.push(`textarea:focus,input:focus{border-color:${ch.inputFocusColor}!important;outline-color:${ch.inputFocusColor}!important}`);
+      }
+
+      if (rules.length) {
+        const style = document.createElement('style');
+        style.id = 'cw-custom-appearance';
+        style.textContent = rules.join('\n');
+        document.head.appendChild(style);
+      }
+    },
 
     setWidgetColorVariable(widgetColor) {
       if (!widgetColor) return;

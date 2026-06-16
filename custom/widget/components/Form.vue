@@ -88,6 +88,9 @@ export default {
       return this.isCreating || this.isConversationRouting;
     },
     buttonBgColor() {
+      // Use admin-configured CTA color when set
+      const ctaBg = window.chatwootWebChannel?.ctaBgColor;
+      if (ctaBg) return ctaBg;
       const color = this.widgetColor;
       if (!color) return color;
       if (
@@ -100,6 +103,8 @@ export default {
       return color;
     },
     textColor() {
+      const ctaText = window.chatwootWebChannel?.ctaTextColor;
+      if (ctaText) return ctaText;
       return getContrastingTextColor(this.buttonBgColor);
     },
     hasActiveCampaign() {
