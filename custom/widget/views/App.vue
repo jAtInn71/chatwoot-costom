@@ -186,6 +186,26 @@ export default {
       const ch = window.chatwootWebChannel || {};
       const rules = [];
 
+      // Extract solid color from widget_color (gradient → first hex)
+      const widgetColorRaw = ch.widgetColor || '#1f93ff';
+      const solidWidgetColor = (() => {
+        if (!widgetColorRaw.includes('gradient')) return widgetColorRaw;
+        const m = widgetColorRaw.match(/#[a-fA-F0-9]{3,8}/);
+        return m ? m[0] : '#1f93ff';
+      })();
+
+      // Override Chatwoot's --color-n-brand so focus rings use widget color
+      rules.push(`:root{--color-n-brand:${solidWidgetColor}!important}`);
+
+      // Input focus — override box-shadow (Chatwoot uses shadow-n-brand on focus)
+      const focusColor = ch.inputFocusColor || solidWidgetColor;
+      rules.push(
+        `[class*="rounded-[7px]"]:focus-within,` +
+        `.woot-chat-input:focus-within` +
+        `{box-shadow:0 0 0 1px ${focusColor},0 0 2px 3px ${focusColor}33!important}`
+      );
+
+      // Widget background
       if (ch.widgetBgColor) {
         rules.push(`body,#app{background:${ch.widgetBgColor}!important}`);
       }
@@ -193,30 +213,60 @@ export default {
         const u = ch.widgetBgImageUrl.replace(/'/g, "\\'");
         rules.push(`body,#app{background-image:url('${u}')!important;background-size:cover!important;background-position:center!important}`);
       }
+
+      // Google Font — load via <link>
       if (ch.widgetFontFamily) {
-        rules.push(`body{font-family:'${ch.widgetFontFamily}',sans-serif!important}`);
+        const fname = ch.widgetFontFamily.trim();
+        if (fname) {
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fname).replace(/%20/g,'+')}:wght@400;500;600&display=swap`;
+          document.head.appendChild(link);
+          rules.push(`body,*{font-family:'${fname}',sans-serif!important}`);
+        }
       }
+
+      // Message font size (same for bot + user)
+      if (ch.messageFontSize) {
+        rules.push(`.chat-bubble,.chat-bubble *{font-size:${ch.messageFontSize}px!important}`);
+      }
+
+      // Welcome heading / tagline  (structural selectors — reliable across Chatwoot versions)
       if (ch.welcomeHeadingColor || ch.welcomeHeadingSize) {
         const c = ch.welcomeHeadingColor ? `color:${ch.welcomeHeadingColor}!important;` : '';
         const s = ch.welcomeHeadingSize ? `font-size:${ch.welcomeHeadingSize}px!important;` : '';
-        rules.push(`#app h2,.welcome-title,.team-availability h2{${c}${s}}`);
+        rules.push(`#app h2{${c}${s}}`);
       }
       if (ch.welcomeTaglineColor || ch.welcomeTaglineSize) {
         const c = ch.welcomeTaglineColor ? `color:${ch.welcomeTaglineColor}!important;` : '';
         const s = ch.welcomeTaglineSize ? `font-size:${ch.welcomeTaglineSize}px!important;` : '';
-        rules.push(`#app .welcome-tagline,.team-availability p.tagline{${c}${s}}`);
+        // tagline is typically the first <p> after the h2 in the home view
+        rules.push(`#app h2+p,#app h2~p:first-of-type{${c}${s}}`);
       }
+
+      // Availability text
       if (ch.onlineStatusColor) {
-        rules.push(`.availability-status,.team-availability .online-status-text{color:${ch.onlineStatusColor}!important}`);
+        rules.push(`.availability-status,.online-status{color:${ch.onlineStatusColor}!important}`);
       }
       if (ch.replyTimeColor) {
-        rules.push(`.reply-time,.team-availability .reply-time-text{color:${ch.replyTimeColor}!important}`);
+        rules.push(`.reply-time{color:${ch.replyTimeColor}!important}`);
       }
+
+      // CTA button — targets FormKit submit + all buttons in the widget home
       if (ch.ctaBgColor || ch.ctaTextColor) {
         const bg = ch.ctaBgColor ? `background:${ch.ctaBgColor}!important;` : '';
         const tc = ch.ctaTextColor ? `color:${ch.ctaTextColor}!important;` : '';
-        rules.push(`.woot-submit-button,.start-conversation-btn,button.new-conversation{${bg}${tc}}`);
+        // .formkit-form button = pre-chat form submit button
+        // button[data-type="submit"] = FormKit rendered button
+        // .button.success = Chatwoot Foundation button
+        rules.push(
+          `.formkit-form button,button[data-type="submit"],.button.success,` +
+          `.start-conversation-button button,.woot-widget-wrap .button` +
+          `{${bg}${tc}}`
+        );
       }
+
+      // Chat bubbles
       if (ch.botBubbleBgColor || ch.botBubbleTextColor) {
         const bg = ch.botBubbleBgColor ? `background-color:${ch.botBubbleBgColor}!important;` : '';
         const tc = ch.botBubbleTextColor ? `color:${ch.botBubbleTextColor}!important;` : '';
@@ -227,8 +277,10 @@ export default {
         const tc = ch.userBubbleTextColor ? `color:${ch.userBubbleTextColor}!important;` : '';
         rules.push(`.chat-bubble.user{${bg}${tc}}`);
       }
-      if (ch.inputFocusColor) {
-        rules.push(`textarea:focus,input:focus{border-color:${ch.inputFocusColor}!important;outline-color:${ch.inputFocusColor}!important}`);
+
+      // Unread notification popup background
+      if (ch.widgetBgColor) {
+        rules.push(`.unread-notification-wrap,.unread-message-count,.campaign-show-btn{background:${ch.widgetBgColor}!important}`);
       }
 
       if (rules.length) {

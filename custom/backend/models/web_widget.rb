@@ -48,7 +48,8 @@ class Channel::WebWidget < ApplicationRecord
                     :cta_bg_color, :cta_text_color,
                     :bot_bubble_bg_color, :bot_bubble_text_color,
                     :user_bubble_bg_color, :user_bubble_text_color,
-                    :input_focus_color].freeze
+                    :input_focus_color,
+                    :message_font_size].freeze
 
   before_validation :validate_pre_chat_options
   validates :website_url, presence: true

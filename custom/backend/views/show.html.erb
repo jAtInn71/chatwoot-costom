@@ -53,6 +53,7 @@
         userBubbleBgColor: <%= @web_widget.user_bubble_bg_color.to_json.html_safe %>,
         userBubbleTextColor: <%= @web_widget.user_bubble_text_color.to_json.html_safe %>,
         inputFocusColor: <%= @web_widget.input_focus_color.to_json.html_safe %>,
+        messageFontSize: <%= (@web_widget.message_font_size || 0).to_json.html_safe %>,
       }
       window.chatwootPubsubToken = '<%= @contact_inbox.pubsub_token %>'
       window.authToken = '<%= @token %>'

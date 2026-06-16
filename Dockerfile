@@ -55,6 +55,7 @@ COPY custom/widget/api/conversation.js app/javascript/widget/api/conversation.js
 COPY custom/widget/api/endpoint.js app/javascript/widget/api/endPoints.js
 COPY custom/widget/api/inboxConfig.js app/javascript/widget/api/inboxConfig.js
 COPY custom/dashboard/ConfigurationPage.vue app/javascript/dashboard/routes/dashboard/settings/inbox/settingsPage/ConfigurationPage.vue
+COPY custom/dashboard/Settings.vue app/javascript/dashboard/routes/dashboard/settings/inbox/Settings.vue
 COPY custom/dashboard/ResolveAction.vue app/javascript/dashboard/components/buttons/ResolveAction.vue
 COPY custom/dashboard/ColorPicker.vue app/javascript/dashboard/components-next/colorpicker/ColorPicker.vue
 COPY custom/sdk/IFrameHelper.js app/javascript/sdk/IFrameHelper.js
@@ -173,6 +174,8 @@ COPY custom/backend/migrations/20260521000003_add_bubble_icon_size_to_channel_we
      /app/db/migrate/20260521000003_add_bubble_icon_size_to_channel_web_widgets.rb
 COPY custom/backend/migrations/20260521000004_add_widget_appearance_to_channel_web_widgets.rb \
      /app/db/migrate/20260521000004_add_widget_appearance_to_channel_web_widgets.rb
+COPY custom/backend/migrations/20260521000005_add_message_font_size_to_channel_web_widgets.rb \
+     /app/db/migrate/20260521000005_add_message_font_size_to_channel_web_widgets.rb
 
 # ── Frontend: Dashboard & Widget files processed by Vite in Stage 1 ────────────
 # All Vue components, store modules, and helpers are bundled by Vite in Stage 1
