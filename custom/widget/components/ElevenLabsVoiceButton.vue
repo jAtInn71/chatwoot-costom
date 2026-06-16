@@ -525,9 +525,8 @@ export default {
     _syncCallActiveFromPopup() {
       if (this.isCallActive) return;
 
-      // Reclaim popup window reference (only when we KNOW a call is active).
-      // window.open('', name) returns the existing named window without navigating it.
-      // Called here — not in mounted() — so we never open a blank popup accidentally.
+      // Try to reclaim existing popup window reference.
+      // window.open('', name) returns the already-open named window without navigating it.
       if (!_popupRef) {
         try {
           const existing = window.open('', 'cwVoiceCall');
@@ -541,6 +540,14 @@ export default {
         } catch (_) {}
       }
 
+      // Hard refresh site: call is active but popup is dead (user navigated, popup closed).
+      // Auto-reopen the popup HTML so the call UI comes back on every page change.
+      if (this.hardRefreshSite && (!_popupRef || _popupRef.closed)) {
+        vLog('Hard refresh site — popup dead but call active, reopening popup');
+        this._reopenPopup();
+        return;
+      }
+
       vLog('Detected alive popup via heartbeat — syncing UI to active');
       this.isCallActive = true;
       this.isConnecting = false;
@@ -548,9 +555,33 @@ export default {
       this.setConnecting(false);
       try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
       this.notifyParentWidgetHide(true);
-      // Start keepAlive: poll every 5s so we detect popup close on ANY page/tab.
-      // Stops automatically when resetCallState() is called.
       this._startKeepAlive();
+    },
+
+    _reopenPopup() {
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      const w = isMobile ? 200 : 260;
+      const h = isMobile ? 400 : 370;
+      const left = Math.max(0, Math.round((screen.availWidth  - w) / 2));
+      const top  = Math.max(0, Math.round((screen.availHeight - h) / 2));
+      const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
+      const _wt = WEBSITE_TOKEN || '';
+      const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
+      _popupRef = window.open(cleanUrl, 'cwVoiceCall', features);
+      if (!_popupRef) {
+        vLog('Popup blocked on reopen');
+        return;
+      }
+      try { _popupRef.focus(); } catch (_) {}
+      _pendingConfigPromise = this._buildConfig();
+      this.isCallActive = true;
+      this.isConnecting = false;
+      this.setActive(true);
+      this.setConnecting(false);
+      try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
+      this.notifyParentWidgetHide(true);
+      this._startKeepAlive();
+      vLog('Popup reopened ✓');
     },
 
     _startKeepAlive() {
@@ -811,59 +842,6 @@ export default {
 </script>
 
 <template>
-  <!-- Inline call overlay (SPA mode — no popup window) -->
-  <Teleport to="body">
-    <div
-      v-if="showInlineCallPanel"
-      class="cw-vi-overlay"
-      :class="{ 'cw-vi-speaking': inlineSpeaking }"
-    >
-      <div class="cw-vi-header">
-        <span class="cw-vi-title">Voice Call</span>
-        <span v-if="inlineStatus === 'connected'" class="cw-vi-live">
-          <span class="cw-vi-live-dot" />
-          LIVE
-        </span>
-      </div>
-
-      <div class="cw-vi-body">
-        <div class="cw-vi-avatar-wrap">
-          <div class="cw-vi-ring cw-vi-ring1" />
-          <div class="cw-vi-ring cw-vi-ring2" />
-          <img
-            class="cw-vi-avatar"
-            :src="inlineAvatarSrc"
-            alt="Agent"
-          />
-        </div>
-        <div class="cw-vi-name">{{ inlineAgentName }}</div>
-        <div class="cw-vi-role">Voice Assistant</div>
-        <div class="cw-vi-badge" :data-state="inlineStatus">
-          <span class="cw-vi-badge-dot" />
-          <span>{{ inlineStatusText }}</span>
-        </div>
-      </div>
-
-      <div class="cw-vi-footer">
-        <button
-          class="cw-vi-end-btn"
-          :disabled="inlineStatus !== 'connected'"
-          @click="endInlineCall"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13">
-            <path
-              d="M3.5 14.5c5.5-5 11.5-5 17 0 .8.7.9 2 0 2.7l-2.1 1.6c-.5.4-1.2.4-1.7 0l-2-1.7
-                 a1.5 1.5 0 0 1-.5-1.1V14a9.8 9.8 0 0 0-4.4 0v0c0 .4-.2.8-.5 1.1l-2 1.6c-.5.4-1.2.4-1.7 0
-                 L3.5 15c-.5-.6-.4-1.7 0-2.5Z"
-              transform="rotate(135 12 12)"
-            />
-          </svg>
-          End Call
-        </button>
-      </div>
-    </div>
-  </Teleport>
-
   <div class="elevenlabs-container">
     <button
       v-if="shouldShowButton"
