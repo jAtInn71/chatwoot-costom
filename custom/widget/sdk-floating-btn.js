@@ -43,7 +43,23 @@
     if (prevLoaded) {
       // Script running fresh despite sessionStorage flag = hard refresh happened
       localStorage.setItem(HARD_REFRESH_CACHE_KEY, 'true');
+      sessionStorage.setItem(SESSION_LOAD_KEY, '1');
+      return;
     }
+
+    // Even on first page: if we arrived here via a same-origin link click that
+    // caused a full page reload, document.referrer will be set to the previous
+    // page on this site. SPAs never trigger this because their router handles
+    // navigation without a reload. So same-origin referrer = hard refresh site.
+    try {
+      if (document.referrer) {
+        var refOrigin = new URL(document.referrer).origin;
+        if (refOrigin === location.origin) {
+          localStorage.setItem(HARD_REFRESH_CACHE_KEY, 'true');
+        }
+      }
+    } catch (_) {}
+
     sessionStorage.setItem(SESSION_LOAD_KEY, '1');
   })();
 
@@ -203,14 +219,13 @@
     // Primary: use Chatwoot's own open/close events (zero polling overhead).
     window.addEventListener('chatwoot:on-open', function () {
       try { localStorage.setItem(WIDGET_OPEN_KEY, 'true'); } catch (_) {}
-      // SPA mode: call lives inside the widget — hide End Call when widget opens.
+      // SPA + widget opened: call button inside widget is visible — hide floating btn.
       if (!isHardRefreshSite() && window._cwVoiceActive) hideBtn();
-      // Send prefill data every time widget opens (in case form re-renders)
       setTimeout(sendPrefillData, 300);
     });
     window.addEventListener('chatwoot:on-close', function () {
       try { localStorage.setItem(WIDGET_OPEN_KEY, 'false'); } catch (_) {}
-      // SPA mode: call still active but widget closed — show End Call button.
+      // SPA + widget closed: call still active — show floating End Call button.
       if (!isHardRefreshSite() && window._cwVoiceActive) showBtn();
     });
 
@@ -491,13 +506,24 @@
     return localStorage.getItem(HARD_REFRESH_CACHE_KEY) === 'true';
   }
 
+  // ── SPA mode: voice call state indicators ────────────────────────────────
+  // Widget OPEN  → the widget's own red pulsing phone button (ElevenLabsVoiceButton)
+  //               is already visible inside the chat panel — nothing needed here.
+  // Widget CLOSED → show the floating "End Call" button outside the bubble.
+  // Hard-refresh sites → always show floating "End Call" (popup handles the call).
+
   function applyVoiceState(isActive, autoOpen) {
     window._cwVoiceActive = !!isActive;
     if (isActive) {
       var widgetOpen = (localStorage.getItem(WIDGET_OPEN_KEY) === 'true');
-      // Hard refresh: always show End Call (popup is a separate window, not in widget).
-      // SPA: show End Call only when widget is closed (call lives inside the widget).
-      if (isHardRefreshSite() || !widgetOpen) showBtn();
+      // Show End Call button only when: hard-refresh site OR widget is closed.
+      // When widget is open on SPA sites, the call button inside the widget
+      // already shows a red pulsing end-call icon — no extra button needed.
+      if (isHardRefreshSite() || !widgetOpen) {
+        showBtn();
+      } else {
+        hideBtn();
+      }
       if (autoOpen) autoOpenWidget();
     } else {
       hideBtn();
