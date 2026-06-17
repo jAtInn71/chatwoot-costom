@@ -266,6 +266,13 @@ export default {
         );
       }
 
+      // Remove white card background from unread notification popup, keep content visible
+      rules.push(
+        `.unread-notification-wrap{background:transparent!important;box-shadow:none!important;border:none!important}` +
+        `.unread-notification-wrap .notification-message{background:transparent!important;box-shadow:none!important}` +
+        `.unread-notification{background:transparent!important;box-shadow:none!important;border:none!important}`
+      );
+
       if (rules.length) {
         const style = document.createElement('style');
         style.id = 'cw-custom-appearance';
