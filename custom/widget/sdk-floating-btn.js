@@ -627,6 +627,9 @@
     var ev = data.event;
 
     // ── Widget asks parent to open voice popup ───────────────────────────────
+    // This message is sent SYNCHRONOUSLY (before any async work) so window.open
+    // is called while the user-gesture context is still valid. Config arrives
+    // separately via cw-voice-popup-send-config once the async fetch completes.
     if (ev === 'cw-open-voice-popup') {
       var popup = null;
       try { popup = window.open(data.url, 'cwVoiceCall', data.features); } catch (_) {}
@@ -639,17 +642,22 @@
       }
       try { popup.focus(); } catch (_) {}
       _parentPopupRef = popup;
-      // Retry sending config until popup receives it (popup signals receipt by not requesting again)
-      var _cfg = data.config;
-      var _tries = 0;
-      var _cfgTimer = setInterval(function () {
-        _tries++;
-        if (!popup || popup.closed || _tries > 20) { clearInterval(_cfgTimer); return; }
-        try { popup.postMessage({ source: 'cw-widget', event: 'config', config: _cfg }, '*'); } catch (_) {}
-      }, 400);
       window._cwVoiceActive = true;
       applyVoiceState(true, false);
       try { _prevWidgetOpen = null; } catch (_) {}
+      return;
+    }
+
+    // ── Widget sends config after async fetch — relay it to the open popup ───
+    if (ev === 'cw-voice-popup-send-config') {
+      if (!_parentPopupRef || _parentPopupRef.closed) return;
+      var _cfg2 = data.config;
+      var _tries2 = 0;
+      var _cfgTimer2 = setInterval(function () {
+        _tries2++;
+        if (!_parentPopupRef || _parentPopupRef.closed || _tries2 > 20) { clearInterval(_cfgTimer2); return; }
+        try { _parentPopupRef.postMessage({ source: 'cw-widget', event: 'config', config: _cfg2 }, '*'); } catch (_) {}
+      }, 400);
       return;
     }
 

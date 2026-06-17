@@ -228,46 +228,57 @@ export default {
         }
       } catch (_) {}
 
-      this.isConnecting = true;
-      this.setConnecting(true);
-
-      // Build config first so parent page can deliver it to popup immediately
-      let config = null;
-      try { config = await this._buildConfig(); }
-      catch (e) {
-        console.error('[VOICE] failed to build config:', e?.message);
-        this.isConnecting = false;
-        this.setConnecting(false);
-        return;
-      }
-
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       const w = isMobile ? 200 : 260;
       const h = isMobile ? 400 : 370;
       const left = Math.max(0, Math.round((screen.availWidth  - w) / 2));
       const top  = Math.max(0, Math.round((screen.availHeight - h) / 2));
       const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
-
       const _wt = WEBSITE_TOKEN || '';
       const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
 
-      // Ask PARENT PAGE to open the popup — ensures it opens as a real top-level
-      // browser window, not attached to the widget iframe.
+      // ── Step 1: Open popup IMMEDIATELY (synchronous, before any async work) ──
+      // window.open() must be called within user-gesture context (the click).
+      // If we await _buildConfig() first (~500ms API call), the browser treats
+      // the subsequent window.open as an unprompted popup and blocks it.
+      // Popup opens in "waiting for config" state and starts its own retry loop.
       window.parent.postMessage({
         event: 'cw-open-voice-popup',
         url: cleanUrl,
         features: features,
-        config: config,
+        config: null,   // config comes separately below
       }, '*');
 
-      this.isConnecting = false;
-      this.setConnecting(false);
+      this.isConnecting = true;
+      this.setConnecting(true);
       this.isCallActive = true;
       this.setActive(true);
       this.notifyParentWidgetHide(true);
       try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
 
-      vLog('Popup open request sent to parent ✓');
+      // ── Step 2: Fetch config async, then deliver it to the already-open popup ──
+      try {
+        const config = await this._buildConfig();
+        window.parent.postMessage({
+          event: 'cw-voice-popup-send-config',
+          config: config,
+        }, '*');
+        vLog('Config sent to popup via parent ✓');
+      } catch (e) {
+        console.error('[VOICE] failed to build config:', e?.message);
+        // Config failed — close the popup we just opened
+        window.parent.postMessage({ event: 'cw-end-voice-popup' }, '*');
+        this.isCallActive = false;
+        this.isConnecting = false;
+        this.setActive(false);
+        this.setConnecting(false);
+        try { localStorage.setItem('cw_voice_active', '0'); } catch (_) {}
+        return;
+      }
+
+      this.isConnecting = false;
+      this.setConnecting(false);
+      vLog('Popup open + config delivered ✓');
     },
 
     // ── Inline call (SPA mode — no popup window) ───────────────────────────
@@ -595,12 +606,17 @@ export default {
       const _wt = WEBSITE_TOKEN || '';
       const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
 
-      // Build config and ask parent to reopen popup
+      // Open popup first (no config yet), then send config separately
+      window.parent.postMessage({
+        event: 'cw-open-voice-popup',
+        url: cleanUrl,
+        features: features,
+        config: null,
+      }, '*');
+
       this._buildConfig().then(function(config) {
         window.parent.postMessage({
-          event: 'cw-open-voice-popup',
-          url: cleanUrl,
-          features: features,
+          event: 'cw-voice-popup-send-config',
           config: config,
         }, '*');
       }).catch(function(e) {
