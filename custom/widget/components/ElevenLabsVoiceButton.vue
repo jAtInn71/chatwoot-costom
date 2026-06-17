@@ -376,19 +376,28 @@ export default {
     },
 
     async endInlineCall() {
-      if (!_inlineConversation) {
+      // Grab reference and immediately null it — prevents double-end if called twice.
+      const conv = _inlineConversation;
+      _inlineConversation = null;
+
+      if (!conv) {
         this.handleInlineCallEnded('Call ended');
         return;
       }
+
       this.inlineStatusText = 'Ending…';
-      try { await _inlineConversation.endSession(); }
+      try { await conv.endSession(); }
       catch (e) { console.warn('[VOICE-INLINE] endSession threw:', e?.message); }
-      setTimeout(() => {
-        if (this.isCallActive) this.handleInlineCallEnded('Call ended');
-      }, 1500);
+
+      // Always call handleInlineCallEnded — do NOT rely on onDisconnect firing.
+      // ElevenLabs SDK sometimes does not fire onDisconnect after endSession.
+      this.handleInlineCallEnded('Call ended');
     },
 
     handleInlineCallEnded(label) {
+      // Guard — if already cleaned up, don't run again.
+      if (!this.isCallActive && this.inlineStatus === 'idle') return;
+
       this.isCallActive = false;
       this.isConnecting = false;
       this.inlineStatus = 'ended';

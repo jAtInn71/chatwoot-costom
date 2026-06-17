@@ -266,23 +266,6 @@ export default {
         );
       }
 
-      // Chat bubbles
-      if (ch.botBubbleBgColor || ch.botBubbleTextColor) {
-        const bg = ch.botBubbleBgColor ? `background-color:${ch.botBubbleBgColor}!important;` : '';
-        const tc = ch.botBubbleTextColor ? `color:${ch.botBubbleTextColor}!important;` : '';
-        rules.push(`.chat-bubble.agent{${bg}${tc}}`);
-      }
-      if (ch.userBubbleBgColor || ch.userBubbleTextColor) {
-        const bg = ch.userBubbleBgColor ? `background-color:${ch.userBubbleBgColor}!important;` : '';
-        const tc = ch.userBubbleTextColor ? `color:${ch.userBubbleTextColor}!important;` : '';
-        rules.push(`.chat-bubble.user{${bg}${tc}}`);
-      }
-
-      // Unread notification popup background
-      if (ch.widgetBgColor) {
-        rules.push(`.unread-notification-wrap,.unread-message-count,.campaign-show-btn{background:${ch.widgetBgColor}!important}`);
-      }
-
       if (rules.length) {
         const style = document.createElement('style');
         style.id = 'cw-custom-appearance';

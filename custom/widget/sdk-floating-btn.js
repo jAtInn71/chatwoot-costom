@@ -180,6 +180,11 @@
       if (typeof e.data !== 'string' || e.data.indexOf('chatwoot-widget:') !== 0) return;
       var msg = JSON.parse(e.data.replace('chatwoot-widget:', ''));
       if (msg.event !== 'loaded') return;
+
+      // Send hardRefreshSite flag IMMEDIATELY when widget loads — before user can
+      // click the voice button. This ensures popup mode is active from the start.
+      sendConfigToWidget();
+
       var ch = msg.config && msg.config.channelConfig;
       if (!ch || !ch.customBubbleIconUrl) return;
 
@@ -194,6 +199,9 @@
       }, 150);
     } catch (_) {}
   });
+
+  // Outer-scope so the postMessage listener can reset it when call starts/ends.
+  var _prevWidgetOpen = null;
 
   // Also re-apply on chatwoot:ready (handles page re-navigation edge cases)
   window.addEventListener('chatwoot:ready', function () {
@@ -217,9 +225,7 @@
 
     // ── Save widget state + sync floating button ──────────────────────────
     // Events fire when available; polling catches everything else.
-    // _prevWidgetOpen tracks state so we only act on actual changes.
-    var _prevWidgetOpen = null;
-
+    // _prevWidgetOpen is declared in outer scope so postMessage listener can reset it.
     function _syncFloatingBtn(isOpen) {
       try { localStorage.setItem(WIDGET_OPEN_KEY, isOpen ? 'true' : 'false'); } catch (_) {}
       if (_prevWidgetOpen === isOpen) return; // no change — nothing to do
@@ -619,10 +625,14 @@
     if (ev === 'cw-voice-call-started' || ev === 'cw-voice-popup-opened') {
       window._cwVoiceActive = true;
       applyVoiceState(true, false);
+      // Reset _prevWidgetOpen so _syncFloatingBtn re-evaluates on next poll.
+      // This ensures the floating button appears immediately if widget is closed.
+      try { _prevWidgetOpen = null; } catch (_) {}
     } else if (ev === 'cw-voice-call-ended' || ev === 'voice-popup-ended' || ev === 'cw-voice-popup-ended') {
       window._cwVoiceActive = false;
       applyVoiceState(false, false);
       _showChatwootWidget();
+      try { _prevWidgetOpen = null; } catch (_) {}
     }
   });
 

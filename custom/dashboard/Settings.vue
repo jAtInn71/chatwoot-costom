@@ -117,10 +117,6 @@ export default {
       cwReplyTimeColor: '',
       cwCtaBgColor: '',
       cwCtaTextColor: '',
-      cwBotBubbleBgColor: '',
-      cwBotBubbleTextColor: '',
-      cwUserBubbleBgColor: '',
-      cwUserBubbleTextColor: '',
       cwInputFocusColor: '',
       cwMessageFontSize: 14,
       cwBrandingText: '',
@@ -470,10 +466,6 @@ export default {
       this.cwReplyTimeColor = this.inbox.reply_time_color || '';
       this.cwCtaBgColor = this.inbox.cta_bg_color || '';
       this.cwCtaTextColor = this.inbox.cta_text_color || '';
-      this.cwBotBubbleBgColor = this.inbox.bot_bubble_bg_color || '';
-      this.cwBotBubbleTextColor = this.inbox.bot_bubble_text_color || '';
-      this.cwUserBubbleBgColor = this.inbox.user_bubble_bg_color || '';
-      this.cwUserBubbleTextColor = this.inbox.user_bubble_text_color || '';
       this.cwInputFocusColor = this.inbox.input_focus_color || '';
       this.cwMessageFontSize = this.inbox.message_font_size || 14;
       this.cwBrandingText = this.inbox.custom_branding_text || '';
@@ -546,10 +538,6 @@ export default {
             reply_time_color: this.cwReplyTimeColor.trim() || null,
             cta_bg_color: this.cwCtaBgColor.trim() || null,
             cta_text_color: this.cwCtaTextColor.trim() || null,
-            bot_bubble_bg_color: this.cwBotBubbleBgColor.trim() || null,
-            bot_bubble_text_color: this.cwBotBubbleTextColor.trim() || null,
-            user_bubble_bg_color: this.cwUserBubbleBgColor.trim() || null,
-            user_bubble_text_color: this.cwUserBubbleTextColor.trim() || null,
             input_focus_color: this.cwInputFocusColor.trim() || null,
             message_font_size: this.cwMessageFontSize ? Number(this.cwMessageFontSize) : null,
           },
@@ -1370,49 +1358,6 @@ export default {
                         :style="{ background: cwCtaBgColor || '#1f93ff', color: cwCtaTextColor || '#ffffff' }">
                         Start Conversation
                       </button>
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label="Bot Message Background">
-                    <div class="flex items-center gap-2">
-                      <ColorPicker v-model="cwBotBubbleBgColor" />
-                      <input v-model="cwBotBubbleBgColor" type="text" placeholder="#f3f4f6"
-                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label="Bot Message Text Color">
-                    <div class="flex items-center gap-2">
-                      <ColorPicker v-model="cwBotBubbleTextColor" />
-                      <input v-model="cwBotBubbleTextColor" type="text" placeholder="#111827"
-                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label="User Message Background">
-                    <div class="flex items-center gap-2">
-                      <ColorPicker v-model="cwUserBubbleBgColor" />
-                      <input v-model="cwUserBubbleBgColor" type="text" placeholder="uses widget color"
-                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label="User Message Text Color">
-                    <div class="flex items-center gap-2">
-                      <ColorPicker v-model="cwUserBubbleTextColor" />
-                      <input v-model="cwUserBubbleTextColor" type="text" placeholder="#ffffff"
-                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                    <div v-if="cwBotBubbleBgColor || cwUserBubbleBgColor" class="mt-3 flex flex-col gap-2">
-                      <span class="text-xs text-n-slate-9">Message preview:</span>
-                      <div v-if="cwBotBubbleBgColor" class="rounded-lg px-3 py-2 text-sm w-fit max-w-xs"
-                        :style="{ background: cwBotBubbleBgColor, color: cwBotBubbleTextColor || '#111827', fontSize: (cwMessageFontSize || 14) + 'px', fontFamily: cwFontFamily || 'inherit' }">
-                        Hi! How can I help?
-                      </div>
-                      <div v-if="cwUserBubbleBgColor" class="rounded-lg px-3 py-2 text-sm w-fit max-w-xs ml-auto"
-                        :style="{ background: cwUserBubbleBgColor, color: cwUserBubbleTextColor || '#ffffff', fontSize: (cwMessageFontSize || 14) + 'px', fontFamily: cwFontFamily || 'inherit' }">
-                        I have a question.
-                      </div>
                     </div>
                   </SettingsFieldSection>
 
