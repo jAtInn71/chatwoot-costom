@@ -37,6 +37,10 @@ let _pendingConfig = null;
 let _inlineConversation = null;
 let _inlineHeartbeatTimer = null;
 let _inlineBackendHeartbeatTimer = null;
+// Generation counter — incremented every time a NEW call starts.
+// Callbacks capture myGen; if myGen !== _callGeneration when they fire,
+// they belong to a stale/old session and must not touch current state.
+let _callGeneration = 0;
 
 const HEARTBEAT_KEY        = 'cw_voice_popup_heartbeat';
 const HEARTBEAT_MAX_AGE_MS = 4000;
@@ -270,6 +274,14 @@ export default {
     async startInlineCall() {
       if (!this.hasElevenLabsVoiceEnabled) return;
 
+      // Increment generation FIRST — any in-flight callbacks from a previous
+      // session will see their captured myGen no longer matches and bail out.
+      const myGen = ++_callGeneration;
+
+      // Fast double-click guard: if isConnecting is already true from an earlier
+      // startInlineCall that hasn't finished the await yet, abort this one.
+      if (this.isConnecting) return;
+
       // Guard against duplicate active call
       try {
         const cwConv = this.getCwConversationToken();
@@ -317,6 +329,7 @@ export default {
           },
 
           onConnect: () => {
+            if (myGen !== _callGeneration) return; // stale session
             this.isConnecting = false;
             this.isCallActive = true;
             this.inlineStatus = 'connected';
@@ -344,9 +357,13 @@ export default {
             } catch (_) {}
           },
 
-          onDisconnect: () => this.handleInlineCallEnded('Call ended'),
+          onDisconnect: () => {
+            if (myGen !== _callGeneration) return; // stale session — do NOT reset current call
+            this.handleInlineCallEnded('Call ended');
+          },
 
           onError: (err) => {
+            if (myGen !== _callGeneration) return; // stale session
             const msg = (err && (err.message || err.toString())) || 'Unknown error';
             console.error('[VOICE-INLINE] error:', msg);
             this.inlineStatus = 'error';
@@ -356,6 +373,7 @@ export default {
           },
 
           onMessage: ({ message, source }) => {
+            if (myGen !== _callGeneration) return; // stale session
             const text = (message || '').toString().trim();
             if (!text) return;
             const cwConv = this.getCwConversationToken();
@@ -367,6 +385,7 @@ export default {
           },
 
           onModeChange: (mode) => {
+            if (myGen !== _callGeneration) return; // stale session
             this.inlineSpeaking = mode === 'speaking';
           },
         });
