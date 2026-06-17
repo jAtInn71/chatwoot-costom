@@ -170,11 +170,13 @@ export default {
     handleClick() {
       if (this.isConnecting) return;
       if (!this.hardRefreshSite) {
-        // SPA mode: button click while active = end inline call
+        // SPA mode: call active or in progress → end it
         if (this.isCallActive || this.inlineStatus === 'connected') {
           this.endInlineCall();
           return;
         }
+        // Block new call if previous is still winding down (not yet idle)
+        if (this.inlineStatus !== 'idle') return;
         this.startCall();
         return;
       }
@@ -918,44 +920,6 @@ export default {
     </button>
   </div>
 
-  <!-- Inline call overlay (SPA mode only) — fixed, covers entire widget iframe -->
-  <div v-if="showInlineCallPanel" class="cw-vi-overlay">
-    <div class="cw-vi-header">
-      <span class="cw-vi-title">Voice Call</span>
-      <span v-if="inlineStatus === 'connected'" class="cw-vi-live">
-        <span class="cw-vi-live-dot"></span>
-        LIVE
-      </span>
-    </div>
-
-    <div class="cw-vi-body" :class="{ 'cw-vi-speaking': inlineSpeaking }">
-      <div class="cw-vi-avatar-wrap">
-        <div class="cw-vi-ring cw-vi-ring1"></div>
-        <div class="cw-vi-ring cw-vi-ring2"></div>
-        <img class="cw-vi-avatar" :src="inlineAvatarSrc" :alt="inlineAgentName" />
-      </div>
-      <div class="cw-vi-name">{{ inlineAgentName }}</div>
-      <div class="cw-vi-role">Voice Assistant</div>
-      <div class="cw-vi-badge" :data-state="inlineStatus">
-        <span class="cw-vi-badge-dot"></span>
-        <span>{{ inlineStatusText }}</span>
-      </div>
-    </div>
-
-    <div class="cw-vi-footer">
-      <button
-        class="cw-vi-end-btn"
-        :disabled="inlineStatus !== 'connected'"
-        type="button"
-        @click="endInlineCall"
-      >
-        <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" aria-hidden="true">
-          <path d="M3.5 14.5c5.5-5 11.5-5 17 0 .8.7.9 2 0 2.7l-2.1 1.6c-.5.4-1.2.4-1.7 0l-2-1.7a1.5 1.5 0 0 1-.5-1.1V14a9.8 9.8 0 0 0-4.4 0v0c0 .4-.2.8-.5 1.1l-2 1.6c-.5.4-1.2.4-1.7 0L3.5 15c-.5-.6-.4-1.7 0-2.5Z" transform="rotate(135 12 12)" />
-        </svg>
-        End Call
-      </button>
-    </div>
-  </div>
 </template>
 
 <style scoped>
