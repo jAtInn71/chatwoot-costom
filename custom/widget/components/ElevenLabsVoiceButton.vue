@@ -28,12 +28,9 @@ const vLog = (...args) => {
 };
 
 // ── Module-level state survives Vue re-mounts within same iframe load ───
-let _popupRef = null;
 let _broadcast = null;
-let _pendingConfigPromise = null;
-let _pendingConfig = null;
 
-// Inline call (SPA mode — no popup window)
+// Inline call state
 let _inlineConversation = null;
 let _inlineHeartbeatTimer = null;
 let _inlineBackendHeartbeatTimer = null;
@@ -42,17 +39,6 @@ let _inlineBackendHeartbeatTimer = null;
 // they belong to a stale/old session and must not touch current state.
 let _callGeneration = 0;
 
-const HEARTBEAT_KEY        = 'cw_voice_popup_heartbeat';
-const HEARTBEAT_MAX_AGE_MS = 4000;
-
-function isPopupAlive() {
-  if (_popupRef && !_popupRef.closed) return true;
-  try {
-    const last = parseInt(localStorage.getItem(HEARTBEAT_KEY) || '0', 10);
-    if (last && Date.now() - last < HEARTBEAT_MAX_AGE_MS) return true;
-  } catch (_) {}
-  return false;
-}
 function getBroadcastChannel() {
   if (_broadcast) return _broadcast;
   try { _broadcast = new BroadcastChannel('cw-voice'); }
@@ -73,11 +59,7 @@ export default {
     return {
       isConnecting: false,
       isCallActive: false,
-      // Set via postMessage from sdk-floating-btn.js on parent page.
-      // true  → open popup window (call survives hard refreshes).
-      // false → run call inline inside the widget (SPA sites).
-      hardRefreshSite: false,
-      // Inline call state (SPA mode only)
+      // Inline call state
       inlineStatus: 'idle', // idle | connecting | connected | ended | error
       inlineStatusText: 'Connecting…',
       inlineSpeaking: false,
@@ -111,7 +93,7 @@ export default {
       return this.$t('VOICE_AGENT.START_CALL');
     },
     showInlineCallPanel() {
-      return !this.hardRefreshSite && this.inlineStatus !== 'idle';
+      return this.inlineStatus !== 'idle';
     },
     inlineAgentName() {
       return this.inlineConfig?.agentName || 'AI Assistant';
@@ -132,14 +114,8 @@ export default {
       try { ch.postMessage({ type: 'ping' }); } catch (_) {}
     }
 
-    if (isPopupAlive()) this._syncCallActiveFromPopup();
-    this._popupSyncTimer = setTimeout(() => {
-      if (isPopupAlive() && !this.isCallActive) this._syncCallActiveFromPopup();
-    }, 600);
-
     // Event-driven cross-page propagation — NO polling.
     // On mount: check backend immediately + two retries (3s, 6s).
-    // If call is active, _syncCallActiveFromPopup() starts keepAlive.
     this._checkAttempt = 0;
     this._checkBackendCallStatus();
     this._mountRetry2 = setTimeout(() => {
@@ -158,10 +134,8 @@ export default {
     emitter.off('end-voice-call', this.endCall);
     const ch = getBroadcastChannel();
     if (ch) ch.removeEventListener('message', this.onBroadcastMessage);
-    if (this._popupSyncTimer) clearTimeout(this._popupSyncTimer);
     if (this._mountRetry2) clearTimeout(this._mountRetry2);
     if (this._mountRetry3) clearTimeout(this._mountRetry3);
-    if (this._keepAliveInterval) { clearInterval(this._keepAliveInterval); this._keepAliveInterval = null; }
     this._stopInlineHeartbeat();
     this._stopInlineBackendHeartbeat();
     document.removeEventListener('visibilitychange', this._onVisibilityChange);
@@ -173,112 +147,17 @@ export default {
 
     handleClick() {
       if (this.isConnecting) return;
-      if (!this.hardRefreshSite) {
-        // SPA mode: call active or in progress → end it
-        if (this.isCallActive || this.inlineStatus === 'connected') {
-          this.endInlineCall();
-          return;
-        }
-        // Block new call if previous is still winding down (not yet idle)
-        if (this.inlineStatus !== 'idle') return;
-        this.startCall();
+      if (this.isCallActive || this.inlineStatus === 'connected') {
+        this.endInlineCall();
         return;
       }
-      // Hard refresh (popup) mode
-      if (this.isCallActive && _popupRef && !_popupRef.closed) {
-        try { _popupRef.focus(); } catch (_) {}
-        return;
-      }
-      this.isCallActive ? this.endCall() : this.startCall();
+      if (this.inlineStatus !== 'idle') return;
+      this.startCall();
     },
 
     async startCall() {
       if (!this.hasElevenLabsVoiceEnabled) return;
-      // Route to inline (SPA) or popup (hard refresh)
-      if (!this.hardRefreshSite) {
-        await this.startInlineCall();
-        return;
-      }
-
-      // ── Popup mode (hard refresh sites) ────────────────────────────────
-      // Guard — if backend says a call is already active, focus existing popup.
-      try {
-        const cwConv = this.getCwConversationToken();
-        let guardUrl = buildConvUrl('/api/v1/widget/conversations/voice_call_active');
-        if (cwConv) guardUrl += `&cw_conversation=${encodeURIComponent(cwConv)}`;
-        const { data } = await API.get(guardUrl);
-        if (data?.active) {
-          if (_popupRef && !_popupRef.closed) {
-            vLog('Popup is open — focusing it');
-            try { _popupRef.focus(); } catch (_) {}
-            return;
-          }
-          const hbAge = data.last_heartbeat
-            ? Date.now() - new Date(data.last_heartbeat).getTime()
-            : Infinity;
-          if (hbAge < 10000) {
-            vLog('Fresh backend heartbeat (' + Math.round(hbAge/1000) + 's) — call active in another tab');
-            this._syncCallActiveFromPopup();
-            alert('You already have a voice call open in another tab. Please end it there before starting a new one.');
-            return;
-          }
-          vLog('Backend active but heartbeat is ' + Math.round(hbAge/1000) + 's old — likely stale, proceeding');
-          this.isCallActive = false;
-          this.setActive(false);
-        }
-      } catch (_) {}
-
-      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-      const w = isMobile ? 200 : 260;
-      const h = isMobile ? 400 : 370;
-      const left = Math.max(0, Math.round((screen.availWidth  - w) / 2));
-      const top  = Math.max(0, Math.round((screen.availHeight - h) / 2));
-      const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
-      const _wt = WEBSITE_TOKEN || '';
-      const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
-
-      // ── Step 1: Open popup IMMEDIATELY (synchronous, before any async work) ──
-      // window.open() must be called within user-gesture context (the click).
-      // If we await _buildConfig() first (~500ms API call), the browser treats
-      // the subsequent window.open as an unprompted popup and blocks it.
-      // Popup opens in "waiting for config" state and starts its own retry loop.
-      window.parent.postMessage({
-        event: 'cw-open-voice-popup',
-        url: cleanUrl,
-        features: features,
-        config: null,   // config comes separately below
-      }, '*');
-
-      this.isConnecting = true;
-      this.setConnecting(true);
-      this.isCallActive = true;
-      this.setActive(true);
-      this.notifyParentWidgetHide(true);
-      try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
-
-      // ── Step 2: Fetch config async, then deliver it to the already-open popup ──
-      try {
-        const config = await this._buildConfig();
-        window.parent.postMessage({
-          event: 'cw-voice-popup-send-config',
-          config: config,
-        }, '*');
-        vLog('Config sent to popup via parent ✓');
-      } catch (e) {
-        console.error('[VOICE] failed to build config:', e?.message);
-        // Config failed — close the popup we just opened
-        window.parent.postMessage({ event: 'cw-end-voice-popup' }, '*');
-        this.isCallActive = false;
-        this.isConnecting = false;
-        this.setActive(false);
-        this.setConnecting(false);
-        try { localStorage.setItem('cw_voice_active', '0'); } catch (_) {}
-        return;
-      }
-
-      this.isConnecting = false;
-      this.setConnecting(false);
-      vLog('Popup open + config delivered ✓');
+      await this.startInlineCall();
     },
 
     // ── Inline call (SPA mode — no popup window) ───────────────────────────
@@ -459,7 +338,6 @@ export default {
       this.setConnecting(false);
       try { window.parent.postMessage({ event: 'cw-voice-call-ended' }, '*'); } catch (_) {}
 
-      if (this._keepAliveInterval) { clearInterval(this._keepAliveInterval); this._keepAliveInterval = null; }
       // Dismiss panel after short delay — only if a new call hasn't already started
       setTimeout(() => { if (this.inlineStatus === 'ended') this.inlineStatus = 'idle'; }, 1500);
     },
@@ -522,28 +400,9 @@ export default {
     },
 
     endCall() {
-      // 1. Try direct popup message (if widget opened popup directly)
-      if (_popupRef && !_popupRef.closed) {
-        try {
-          _popupRef.postMessage({ source: 'cw-widget', event: 'request-end-call' }, '*');
-        } catch (_) {}
-        setTimeout(() => {
-          if (_popupRef && !_popupRef.closed) {
-            try { _popupRef.close(); } catch (_) {}
-          }
-        }, 1500);
-      } else {
-        // Popup was opened by parent page — ask parent to end it
-        try { window.parent.postMessage({ event: 'cw-end-voice-popup' }, '*'); } catch (_) {}
-      }
-
-      // 2. BroadcastChannel (same-origin tabs only — best-effort)
       const ch = getBroadcastChannel();
       if (ch) { try { ch.postMessage({ type: 'request-end-call' }); } catch (_) {} }
 
-      // 3. ALWAYS hit backend — this is the ONLY reliable cross-page channel.
-      //    Backend sets voice_ended_at → popup heartbeat sees end_requested
-      //    → popup self-terminates. Works even after hard refresh on any page.
       try {
         const cwConv = this.getCwConversationToken();
         let url = buildConvUrl('/api/v1/widget/conversations/voice_call_ended');
@@ -555,7 +414,6 @@ export default {
     },
 
     resetCallState() {
-      _popupRef = null;
       _inlineConversation = null;
       this.isCallActive = false;
       this.isConnecting = false;
@@ -565,27 +423,12 @@ export default {
       this.setConnecting(false);
       this._stopInlineHeartbeat();
       this._stopInlineBackendHeartbeat();
-      if (this._keepAliveInterval) {
-        clearInterval(this._keepAliveInterval);
-        this._keepAliveInterval = null;
-      }
       try { localStorage.setItem('cw_voice_active', '0'); } catch (_) {}
       this.notifyParentWidgetHide(false);
     },
 
     _syncCallActiveFromPopup() {
       if (this.isCallActive) return;
-
-      // NOTE: Do NOT call window.open('', 'cwVoiceCall') — on SPA sites that
-      // creates a new blank browser popup. Popup is now opened by the parent page.
-
-      // Hard refresh: call active but popup dead (page navigated) → ask parent to reopen
-      if (this.hardRefreshSite) {
-        vLog('Hard refresh site — asking parent to reopen popup');
-        this._reopenPopup();
-        return;
-      }
-
       vLog('Detected alive call — syncing UI to active');
       this.isCallActive = true;
       this.isConnecting = false;
@@ -593,77 +436,6 @@ export default {
       this.setConnecting(false);
       try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
       this.notifyParentWidgetHide(true);
-      this._startKeepAlive();
-    },
-
-    _reopenPopup() {
-      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-      const w = isMobile ? 200 : 260;
-      const h = isMobile ? 400 : 370;
-      const left = Math.max(0, Math.round((screen.availWidth  - w) / 2));
-      const top  = Math.max(0, Math.round((screen.availHeight - h) / 2));
-      const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
-      const _wt = WEBSITE_TOKEN || '';
-      const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
-
-      // Open popup first (no config yet), then send config separately
-      window.parent.postMessage({
-        event: 'cw-open-voice-popup',
-        url: cleanUrl,
-        features: features,
-        config: null,
-      }, '*');
-
-      this._buildConfig().then(function(config) {
-        window.parent.postMessage({
-          event: 'cw-voice-popup-send-config',
-          config: config,
-        }, '*');
-      }).catch(function(e) {
-        console.error('[VOICE] _reopenPopup config build failed:', e?.message);
-      });
-
-      this.isCallActive = true;
-      this.isConnecting = false;
-      this.setActive(true);
-      this.setConnecting(false);
-      try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
-      this.notifyParentWidgetHide(true);
-      this._startKeepAlive();
-      vLog('Popup reopen request sent to parent ✓');
-    },
-
-    _startKeepAlive() {
-      if (this._keepAliveInterval) return; // already running
-      console.log('[VOICE-WIDGET] keepAlive started');
-      // Poll every 3s — matches popup heartbeat cadence.
-      // Detects popup close (any cause: End Call, X button, tab crash) within ~3s.
-      this._keepAliveInterval = setInterval(async () => {
-        if (!this.isCallActive) {
-          clearInterval(this._keepAliveInterval);
-          this._keepAliveInterval = null;
-          return;
-        }
-        try {
-          const cwConv = this.getCwConversationToken();
-          let url = buildConvUrl('/api/v1/widget/conversations/voice_call_active');
-          if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
-          const { data } = await API.get(url);
-          if (!data?.active) {
-            console.log('[VOICE-WIDGET] keepAlive: backend says inactive — resetting');
-            this.resetCallState();
-          } else if (data.last_heartbeat) {
-            const age = Date.now() - new Date(data.last_heartbeat).getTime();
-            // Heartbeat older than 8s → popup is dead (heartbeat every 3s)
-            if (age > 8000) {
-              console.log('[VOICE-WIDGET] keepAlive: heartbeat ' + Math.round(age/1000) + 's stale — popup dead, resetting');
-              this.resetCallState();
-            }
-          }
-        } catch (e) {
-          console.warn('[VOICE-WIDGET] keepAlive poll failed:', e?.message);
-        }
-      }, 3000);
     },
 
     // Backend-driven call detection — works across browser storage
@@ -678,43 +450,15 @@ export default {
         let url = buildConvUrl('/api/v1/widget/conversations/voice_call_active');
         if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
         const { data } = await API.get(url);
-        const popupHere = _popupRef && !_popupRef.closed;
-
-        // Only log when something interesting is happening (active call or state mismatch).
-        // Suppress idle checks to keep console clean.
-        if (data?.active || this.isCallActive) {
-          console.log('[VOICE-WIDGET] 🔍 status check →', {
-            active: data?.active,
-            source: data?.source,
-            contact_id: data?.contact_id,
-            contact_inbox_id: data?.contact_inbox_id,
-            last_heartbeat: data?.last_heartbeat,
-            uiActive: this.isCallActive,
-            popupHere,
-          });
-        }
 
         if (data?.active && !this.isCallActive) {
-          // Use backend last_heartbeat timestamp to confirm freshness.
-          // localStorage is NOT reliable here — iframe storage is partitioned when
-          // the widget is embedded in a 3rd-party page (Chrome storage partitioning).
-          // Heartbeat every 3s → anything within 10s is a live call.
           const hbAge = data.last_heartbeat
             ? Date.now() - new Date(data.last_heartbeat).getTime()
             : Infinity;
-          // 20s matches backend cutoff — backend already validated freshness,
-          // so we trust its response. popupHere is a bonus fast-path.
-          const isRecentHb = hbAge < 20000;
-          if (isRecentHb || popupHere) {
-            console.log('[VOICE-WIDGET] ✅ syncing UI to ACTIVE (backend heartbeat age=' + Math.round(hbAge/1000) + 's, popupHere=' + popupHere + ')');
+          if (hbAge < 20000) {
             this._syncCallActiveFromPopup();
-          } else {
-            console.log('[VOICE-WIDGET] ⚠️ backend active but heartbeat is ' + Math.round(hbAge/1000) + 's old — treating as stale, ignoring');
           }
-        } else if (!data?.active && this.isCallActive && !popupHere) {
-          // Backend says inactive AND we don't own the popup → call
-          // ended elsewhere (other tab) → reset our UI to idle
-          console.log('[VOICE-WIDGET] 🛑 resetting UI to IDLE (backend says call ended)');
+        } else if (!data?.active && this.isCallActive) {
           this.resetCallState();
         }
       } catch (e) {
@@ -758,53 +502,11 @@ export default {
       const data = e?.data;
       if (!data || typeof data !== 'object') return;
 
-      // Config pushed from sdk-floating-btn.js (parent page)
-      if (data.event === 'cw-config-update') {
-        this.hardRefreshSite = !!data.hardRefreshSite;
-        return;
-      }
-
-      // Floating End Call button on parent page clicked (SPA mode)
+      // Floating End Call button on parent page clicked
       if (data.event === 'end-voice-call-from-parent') {
-        if (!this.hardRefreshSite && (_inlineConversation || this.isCallActive)) {
+        if (_inlineConversation || this.isCallActive) {
           this.endInlineCall();
-        } else {
-          this.endCall();
         }
-        return;
-      }
-
-      if (data.source !== 'cw-voice-popup') return;
-
-      switch (data.event) {
-        case 'voice-popup-opened':
-          vLog('popup says: opened');
-          break;
-        case 'voice-popup-request-config':
-          vLog('popup requesting config…');
-          this._sendConfigToPopup(e.source || _popupRef);
-          break;
-        case 'voice-popup-connected':
-          vLog('popup says: connected ✅');
-          this.isCallActive = true;
-          this.isConnecting = false;
-          this.setActive(true);
-          this.setConnecting(false);
-          break;
-        case 'voice-popup-transcript':
-          vLog('popup transcript →', data.source, data.message);
-          try { this.$store.dispatch('conversation/fetchOldConversations'); } catch (_) {}
-          try { this.$store.dispatch('message/fetchAllMessages'); } catch (_) {}
-          break;
-        case 'voice-popup-error':
-          console.error('[VOICE] popup error:', data.error);
-          this.resetCallState();
-          break;
-        case 'voice-popup-ended':
-        case 'voice-popup-closed':
-          vLog('popup says: ended/closed');
-          this.resetCallState();
-          break;
       }
     },
 
@@ -849,33 +551,7 @@ export default {
         cwConversationId:   String(convId),
         cwConversationUrl:  convUrl,
       };
-      _pendingConfig = config;
       return config;
-    },
-
-    async _sendConfigToPopup(targetWindow) {
-      try {
-        const config = _pendingConfig
-          || (_pendingConfigPromise && await _pendingConfigPromise)
-          || await this._buildConfig();
-        if (targetWindow && !targetWindow.closed) {
-          targetWindow.postMessage(
-            { source: 'cw-widget', event: 'config', config },
-            '*'
-          );
-          vLog('Config sent to popup via postMessage ✓');
-        }
-      } catch (error) {
-        console.error('[VOICE] Failed to build/send config:', error?.message);
-        try {
-          if (targetWindow && !targetWindow.closed) {
-            targetWindow.postMessage(
-              { source: 'cw-widget', event: 'config-error', error: error?.message || 'failed' },
-              '*'
-            );
-          }
-        } catch (_) {}
-      }
     },
 
     getCwConversationToken() {

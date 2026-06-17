@@ -27,41 +27,6 @@
   // Shared flag — true while a voice call is in progress
   window._cwVoiceActive = false;
 
-  // ── Auto-detect hard refresh vs SPA ─────────────────────────────────────
-  // sessionStorage survives hard refreshes but window.* vars reset on reload.
-  // So: if this script runs AND sessionStorage already has our flag →
-  // a full page reload just happened → hard refresh site.
-  // On SPA sites the _cwVoiceInstalled guard above exits early on nav,
-  // so this block only runs once per page-load cycle.
-  var SESSION_LOAD_KEY = 'cw_sdk_loaded';
-  var HARD_REFRESH_CACHE_KEY = 'cw_site_hard_refresh';
-  (function detectSiteType() {
-    var manual = window.chatwootSettings && window.chatwootSettings.hardRefreshSite;
-    if (manual === true || manual === false) return; // manual override — skip auto-detect
-
-    var prevLoaded = sessionStorage.getItem(SESSION_LOAD_KEY);
-    if (prevLoaded) {
-      // Script running fresh despite sessionStorage flag = hard refresh happened
-      localStorage.setItem(HARD_REFRESH_CACHE_KEY, 'true');
-      sessionStorage.setItem(SESSION_LOAD_KEY, '1');
-      return;
-    }
-
-    // Even on first page: if we arrived here via a same-origin link click that
-    // caused a full page reload, document.referrer will be set to the previous
-    // page on this site. SPAs never trigger this because their router handles
-    // navigation without a reload. So same-origin referrer = hard refresh site.
-    try {
-      if (document.referrer) {
-        var refOrigin = new URL(document.referrer).origin;
-        if (refOrigin === location.origin) {
-          localStorage.setItem(HARD_REFRESH_CACHE_KEY, 'true');
-        }
-      }
-    } catch (_) {}
-
-    sessionStorage.setItem(SESSION_LOAD_KEY, '1');
-  })();
 
   // localStorage key for widget open/close state
   var WIDGET_OPEN_KEY = 'cw_widget_open';
@@ -181,10 +146,6 @@
       var msg = JSON.parse(e.data.replace('chatwoot-widget:', ''));
       if (msg.event !== 'loaded') return;
 
-      // Send hardRefreshSite flag IMMEDIATELY when widget loads — before user can
-      // click the voice button. This ensures popup mode is active from the start.
-      sendConfigToWidget();
-
       var ch = msg.config && msg.config.channelConfig;
       if (!ch || !ch.customBubbleIconUrl) return;
 
@@ -231,7 +192,7 @@
       if (_prevWidgetOpen === isOpen) return; // no change — nothing to do
       _prevWidgetOpen = isOpen;
 
-      if (!isHardRefreshSite() && window._cwVoiceActive) {
+      if (window._cwVoiceActive) {
         if (isOpen) {
           hideBtn();   // widget opened: call UI visible inside widget
         } else {
@@ -257,22 +218,6 @@
     }, 400);
 
   });
-
-  // Send hardRefreshSite flag to widget iframe so ElevenLabsVoiceButton
-  // can decide whether to open a popup window or run the call inline.
-  function sendConfigToWidget() {
-    var hard = isHardRefreshSite();
-    document.querySelectorAll('iframe').forEach(function (f) {
-      try {
-        f.contentWindow.postMessage({ event: 'cw-config-update', hardRefreshSite: hard }, '*');
-      } catch (_) {}
-    });
-  }
-  window.addEventListener('chatwoot:ready', function () {
-    setTimeout(sendConfigToWidget, 500);
-  });
-  // Also send it once immediately (in case widget is already mounted)
-  setTimeout(sendConfigToWidget, 1200);
 
   // ════════════════════════════════════════════════════════════════════════
   // FEATURE 2 — Floating "End Call" button
@@ -496,9 +441,6 @@
   // Skip: anchor links (#), mailto/tel/js links, external domains,
   //       links with target="_blank", download links, and form actions.
   document.addEventListener('click', function (e) {
-    // Hard-refresh site: let browser navigate normally — popup window handles the call.
-    if (isHardRefreshSite()) return;
-
     var a = e.target.closest('a[href]');
     if (!a || a.target || a.download) return;
 
@@ -517,9 +459,8 @@
     } catch (_) {}
   });
 
-  // Handle browser Back / Forward buttons (SPA sites only)
+  // Handle browser Back / Forward buttons
   window.addEventListener('popstate', function () {
-    if (isHardRefreshSite()) return;
     spaNavigate(location.href);
   });
 
@@ -528,17 +469,7 @@
   // postMessage listener — bridges Features 2, 3 & 4
   // ════════════════════════════════════════════════════════════════════════
 
-  // Priority: manual chatwootSettings override → auto-detected cache → default false
-  function isHardRefreshSite() {
-    // Check window.chatwootSettings (may be cleared by Chatwoot SDK, so also
-    // accept a direct localStorage write: localStorage.setItem('cw_site_hard_refresh','true'))
-    var manual = window.chatwootSettings && window.chatwootSettings.hardRefreshSite;
-    if (manual === true)  return true;
-    if (manual === false) return false;
-    return localStorage.getItem(HARD_REFRESH_CACHE_KEY) === 'true';
-  }
-
-  // ── SPA mode: voice call state indicators ────────────────────────────────
+  // ── Voice call state indicators ────────────────────────────────
   // Widget OPEN  → the widget's own red pulsing phone button (ElevenLabsVoiceButton)
   //               is already visible inside the chat panel — nothing needed here.
   // Widget CLOSED → show the floating "End Call" button outside the bubble.
@@ -559,7 +490,7 @@
         widgetOpen = (localStorage.getItem(WIDGET_OPEN_KEY) === 'true');
       }
 
-      if (isHardRefreshSite() || !widgetOpen) {
+      if (!widgetOpen) {
         showBtn();
       } else {
         hideBtn();
@@ -570,133 +501,19 @@
     }
   }
 
-  // ════════════════════════════════════════════════════════════════════════
-  // FEATURE 5 — Voice popup window: hide/show Chatwoot widget while open
-  // ════════════════════════════════════════════════════════════════════════
-  //
-  // When the voice call runs in a separate popup window (see voice-popup.html),
-  // we hide the entire Chatwoot widget on the parent page so the popup is the
-  // only visible interface. When the popup closes, the widget reappears.
-  var WIDGET_SELECTORS = [
-    '#chatwoot_live_chat_widget',  // The widget iframe itself
-    '#cw-widget-holder',
-    '#woot-widget-holder',
-    '#cw-bubble-holder',
-    '.woot-widget-holder',
-    '.woot-widget-bubble',         // Floating bubble launcher
-    '.woot--bubble-holder',
-    '.woot-elements--right',
-    '.woot-elements--left',
-  ];
-
-  function _ensureHideStyle() {
-    if (document.getElementById('cw-voice-hide-style')) return;
-    var s = document.createElement('style');
-    s.id = 'cw-voice-hide-style';
-    s.textContent =
-      '.cw-voice-hidden{display:none !important;visibility:hidden !important;' +
-      'opacity:0 !important;pointer-events:none !important;}';
-    document.head.appendChild(s);
-  }
-  function _hideChatwootWidget() {
-    _ensureHideStyle();
-    WIDGET_SELECTORS.forEach(function (sel) {
-      document.querySelectorAll(sel).forEach(function (el) {
-        el.classList.add('cw-voice-hidden');
-      });
-    });
-  }
-  function _showChatwootWidget() {
-    document.querySelectorAll('.cw-voice-hidden').forEach(function (el) {
-      el.classList.remove('cw-voice-hidden');
-    });
-  }
-
-  // ── Voice call state tracking on parent page ─────────────────────────────
-  // Only flips _cwVoiceActive flag for SPA-nav interception. The actual call
-  // lifecycle (start/end detection, popup sync) lives in the widget iframe's
-  // keepAlive — that runs on the chatwoot origin so there's no CORS issue.
-  // We deliberately do NOT fetch from the parent page: customer.com origin
-  // hitting chatwoot.com without CORS allowance would be blocked.
-  // Popup ref held by parent page (popup is opened here, not inside widget iframe)
-  var _parentPopupRef = null;
-
   window.addEventListener('message', function (e) {
     var data = e.data;
     if (!data || typeof data !== 'object') return;
     var ev = data.event;
 
-    // ── Widget asks parent to open voice popup ───────────────────────────────
-    // This message is sent SYNCHRONOUSLY (before any async work) so window.open
-    // is called while the user-gesture context is still valid. Config arrives
-    // separately via cw-voice-popup-send-config once the async fetch completes.
-    if (ev === 'cw-open-voice-popup') {
-      var popup = null;
-      try { popup = window.open(data.url, 'cwVoiceCall', data.features); } catch (_) {}
-      if (!popup) {
-        // Popup blocked — tell widget
-        document.querySelectorAll('iframe').forEach(function (f) {
-          try { f.contentWindow.postMessage({ event: 'cw-voice-popup-blocked' }, '*'); } catch (_) {}
-        });
-        return;
-      }
-      try { popup.focus(); } catch (_) {}
-      _parentPopupRef = popup;
+    if (ev === 'cw-voice-call-started') {
       window._cwVoiceActive = true;
       applyVoiceState(true, false);
       try { _prevWidgetOpen = null; } catch (_) {}
-      return;
-    }
-
-    // ── Widget sends config after async fetch — relay it to the open popup ───
-    if (ev === 'cw-voice-popup-send-config') {
-      if (!_parentPopupRef || _parentPopupRef.closed) return;
-      var _cfg2 = data.config;
-      var _tries2 = 0;
-      var _cfgTimer2 = setInterval(function () {
-        _tries2++;
-        if (!_parentPopupRef || _parentPopupRef.closed || _tries2 > 20) { clearInterval(_cfgTimer2); return; }
-        try { _parentPopupRef.postMessage({ source: 'cw-widget', event: 'config', config: _cfg2 }, '*'); } catch (_) {}
-      }, 400);
-      return;
-    }
-
-    // ── Widget asks parent to end the popup call ─────────────────────────────
-    if (ev === 'cw-end-voice-popup') {
-      if (_parentPopupRef && !_parentPopupRef.closed) {
-        try { _parentPopupRef.postMessage({ source: 'cw-widget', event: 'request-end-call' }, '*'); } catch (_) {}
-        setTimeout(function () {
-          if (_parentPopupRef && !_parentPopupRef.closed) {
-            try { _parentPopupRef.close(); } catch (_) {}
-          }
-          _parentPopupRef = null;
-        }, 1500);
-      }
-      return;
-    }
-
-    // ── Relay popup → parent events back to widget iframes ──────────────────
-    // Popup's window.opener = this parent page, so popup events arrive here.
-    // Widget needs them for UI sync (connected, ended, transcript, etc.)
-    if (data.source === 'cw-voice-popup') {
-      document.querySelectorAll('iframe').forEach(function (f) {
-        try { f.contentWindow.postMessage(data, '*'); } catch (_) {}
-      });
-      if (ev === 'voice-popup-ended' || ev === 'voice-popup-closed') {
-        _parentPopupRef = null;
-      }
-    }
-
-    if (ev === 'cw-voice-call-started' || ev === 'cw-voice-popup-opened') {
-      window._cwVoiceActive = true;
-      applyVoiceState(true, false);
-      try { _prevWidgetOpen = null; } catch (_) {}
-    } else if (ev === 'cw-voice-call-ended' || ev === 'voice-popup-ended' || ev === 'cw-voice-popup-ended') {
+    } else if (ev === 'cw-voice-call-ended') {
       window._cwVoiceActive = false;
       applyVoiceState(false, false);
-      _showChatwootWidget();
       try { _prevWidgetOpen = null; } catch (_) {}
-      _parentPopupRef = null;
     }
   });
 
