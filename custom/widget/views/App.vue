@@ -205,15 +205,6 @@ export default {
         `{box-shadow:0 0 0 1px ${focusColor},0 0 2px 3px ${focusColor}33!important}`
       );
 
-      // Widget background
-      if (ch.widgetBgColor) {
-        rules.push(`body,#app{background:${ch.widgetBgColor}!important}`);
-      }
-      if (ch.widgetBgImageUrl) {
-        const u = ch.widgetBgImageUrl.replace(/'/g, "\\'");
-        rules.push(`body,#app{background-image:url('${u}')!important;background-size:cover!important;background-position:center!important}`);
-      }
-
       // Google Font — load via <link>
       if (ch.widgetFontFamily) {
         const fname = ch.widgetFontFamily.trim();

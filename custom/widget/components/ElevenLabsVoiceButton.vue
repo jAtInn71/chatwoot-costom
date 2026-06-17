@@ -225,6 +225,16 @@ export default {
       this.isConnecting = true;
       this.setConnecting(true);
 
+      // Build config first so parent page can deliver it to popup immediately
+      let config = null;
+      try { config = await this._buildConfig(); }
+      catch (e) {
+        console.error('[VOICE] failed to build config:', e?.message);
+        this.isConnecting = false;
+        this.setConnecting(false);
+        return;
+      }
+
       const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
       const w = isMobile ? 200 : 260;
       const h = isMobile ? 400 : 370;
@@ -234,27 +244,24 @@ export default {
 
       const _wt = WEBSITE_TOKEN || '';
       const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
-      _popupRef = window.open(cleanUrl, 'cwVoiceCall', features);
 
-      if (!_popupRef) {
-        this.isConnecting = false;
-        this.setConnecting(false);
-        alert('Popup blocked — please allow popups for this site to start a voice call.');
-        return;
-      }
-      try { _popupRef.focus(); } catch (_) {}
-
-      _pendingConfigPromise = this._buildConfig();
-
-      this.notifyParentWidgetHide(true);
-      try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
+      // Ask PARENT PAGE to open the popup — ensures it opens as a real top-level
+      // browser window, not attached to the widget iframe.
+      window.parent.postMessage({
+        event: 'cw-open-voice-popup',
+        url: cleanUrl,
+        features: features,
+        config: config,
+      }, '*');
 
       this.isConnecting = false;
       this.setConnecting(false);
       this.isCallActive = true;
       this.setActive(true);
+      this.notifyParentWidgetHide(true);
+      try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
 
-      vLog('Popup opened ✓ (clean URL, config via postMessage)');
+      vLog('Popup open request sent to parent ✓');
     },
 
     // ── Inline call (SPA mode — no popup window) ───────────────────────────
@@ -483,7 +490,7 @@ export default {
     },
 
     endCall() {
-      // 1. Try direct popup message (works only on the page that opened it)
+      // 1. Try direct popup message (if widget opened popup directly)
       if (_popupRef && !_popupRef.closed) {
         try {
           _popupRef.postMessage({ source: 'cw-widget', event: 'request-end-call' }, '*');
@@ -493,6 +500,9 @@ export default {
             try { _popupRef.close(); } catch (_) {}
           }
         }, 1500);
+      } else {
+        // Popup was opened by parent page — ask parent to end it
+        try { window.parent.postMessage({ event: 'cw-end-voice-popup' }, '*'); } catch (_) {}
       }
 
       // 2. BroadcastChannel (same-origin tabs only — best-effort)
@@ -534,30 +544,17 @@ export default {
     _syncCallActiveFromPopup() {
       if (this.isCallActive) return;
 
-      // Try to reclaim existing popup window reference.
-      // window.open('', name) returns the already-open named window without navigating it.
-      if (!_popupRef) {
-        try {
-          const existing = window.open('', 'cwVoiceCall');
-          if (existing && !existing.closed) {
-            const href = existing.location?.href || '';
-            if (href && !href.startsWith('about:')) {
-              _popupRef = existing;
-              vLog('Reclaimed popup ref ✓');
-            }
-          }
-        } catch (_) {}
-      }
+      // NOTE: Do NOT call window.open('', 'cwVoiceCall') — on SPA sites that
+      // creates a new blank browser popup. Popup is now opened by the parent page.
 
-      // Hard refresh site: call is active but popup is dead (user navigated, popup closed).
-      // Auto-reopen the popup HTML so the call UI comes back on every page change.
-      if (this.hardRefreshSite && (!_popupRef || _popupRef.closed)) {
-        vLog('Hard refresh site — popup dead but call active, reopening popup');
+      // Hard refresh: call active but popup dead (page navigated) → ask parent to reopen
+      if (this.hardRefreshSite) {
+        vLog('Hard refresh site — asking parent to reopen popup');
         this._reopenPopup();
         return;
       }
 
-      vLog('Detected alive popup via heartbeat — syncing UI to active');
+      vLog('Detected alive call — syncing UI to active');
       this.isCallActive = true;
       this.isConnecting = false;
       this.setActive(true);
@@ -576,13 +573,19 @@ export default {
       const features = `popup=yes,width=${w},height=${h},left=${left},top=${top}`;
       const _wt = WEBSITE_TOKEN || '';
       const cleanUrl = `${window.location.origin}/voice-popup.html?v=3${_wt ? '&wt=' + encodeURIComponent(_wt) : ''}`;
-      _popupRef = window.open(cleanUrl, 'cwVoiceCall', features);
-      if (!_popupRef) {
-        vLog('Popup blocked on reopen');
-        return;
-      }
-      try { _popupRef.focus(); } catch (_) {}
-      _pendingConfigPromise = this._buildConfig();
+
+      // Build config and ask parent to reopen popup
+      this._buildConfig().then(function(config) {
+        window.parent.postMessage({
+          event: 'cw-open-voice-popup',
+          url: cleanUrl,
+          features: features,
+          config: config,
+        }, '*');
+      }).catch(function(e) {
+        console.error('[VOICE] _reopenPopup config build failed:', e?.message);
+      });
+
       this.isCallActive = true;
       this.isConnecting = false;
       this.setActive(true);
@@ -590,7 +593,7 @@ export default {
       try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
       this.notifyParentWidgetHide(true);
       this._startKeepAlive();
-      vLog('Popup reopened ✓');
+      vLog('Popup reopen request sent to parent ✓');
     },
 
     _startKeepAlive() {

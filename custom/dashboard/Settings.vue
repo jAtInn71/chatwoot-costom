@@ -106,8 +106,6 @@ export default {
       widgetBubblePosition: 'right',
       widgetBubbleType: 'standard',
       widgetBubbleLauncherTitle: '',
-      cwWidgetBgColor: '',
-      cwWidgetBgImageUrl: '',
       cwFontFamily: '',
       cwWelcomeHeadingColor: '',
       cwWelcomeHeadingSize: 24,
@@ -455,8 +453,6 @@ export default {
         this.widgetBubbleType = 'standard';
         this.widgetBubbleLauncherTitle = '';
       }
-      this.cwWidgetBgColor = this.inbox.widget_bg_color || '';
-      this.cwWidgetBgImageUrl = this.inbox.widget_bg_image_url || '';
       this.cwFontFamily = this.inbox.widget_font_family || '';
       this.cwWelcomeHeadingColor = this.inbox.welcome_heading_color || '';
       this.cwWelcomeHeadingSize = this.inbox.welcome_heading_size || 24;
@@ -527,8 +523,6 @@ export default {
         await this.$store.dispatch('inboxes/updateInbox', {
           id: this.inbox.id, formData: false,
           channel: {
-            widget_bg_color: this.cwWidgetBgColor.trim() || null,
-            widget_bg_image_url: this.cwWidgetBgImageUrl.trim() || null,
             widget_font_family: this.cwFontFamily.trim() || null,
             welcome_heading_color: this.cwWelcomeHeadingColor.trim() || null,
             welcome_heading_size: this.cwWelcomeHeadingSize ? Number(this.cwWelcomeHeadingSize) : null,
@@ -1287,19 +1281,6 @@ export default {
                   <SettingsFieldSection label="Message Font Size (px)" help-text="Applies to both bot and user chat bubbles.">
                     <input v-model.number="cwMessageFontSize" type="number" min="10" max="24" placeholder="14"
                       class="w-24 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label="Widget Background Color">
-                    <div class="flex items-center gap-2 max-w-md">
-                      <ColorPicker v-model="cwWidgetBgColor" />
-                      <input v-model="cwWidgetBgColor" type="text" placeholder="hex, rgb, or linear-gradient(…)"
-                        class="flex-1 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label="Background Image URL">
-                    <input v-model="cwWidgetBgImageUrl" type="url" placeholder="https://yoursite.com/bg.jpg"
-                      class="w-full max-w-md px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
                   </SettingsFieldSection>
 
                   <SettingsFieldSection label="Welcome Heading Color &amp; Size (px)">

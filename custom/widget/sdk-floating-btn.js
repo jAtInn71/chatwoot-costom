@@ -618,21 +618,77 @@
   // keepAlive — that runs on the chatwoot origin so there's no CORS issue.
   // We deliberately do NOT fetch from the parent page: customer.com origin
   // hitting chatwoot.com without CORS allowance would be blocked.
+  // Popup ref held by parent page (popup is opened here, not inside widget iframe)
+  var _parentPopupRef = null;
+
   window.addEventListener('message', function (e) {
     var data = e.data;
     if (!data || typeof data !== 'object') return;
     var ev = data.event;
+
+    // ── Widget asks parent to open voice popup ───────────────────────────────
+    if (ev === 'cw-open-voice-popup') {
+      var popup = null;
+      try { popup = window.open(data.url, 'cwVoiceCall', data.features); } catch (_) {}
+      if (!popup) {
+        // Popup blocked — tell widget
+        document.querySelectorAll('iframe').forEach(function (f) {
+          try { f.contentWindow.postMessage({ event: 'cw-voice-popup-blocked' }, '*'); } catch (_) {}
+        });
+        return;
+      }
+      try { popup.focus(); } catch (_) {}
+      _parentPopupRef = popup;
+      // Retry sending config until popup receives it (popup signals receipt by not requesting again)
+      var _cfg = data.config;
+      var _tries = 0;
+      var _cfgTimer = setInterval(function () {
+        _tries++;
+        if (!popup || popup.closed || _tries > 20) { clearInterval(_cfgTimer); return; }
+        try { popup.postMessage({ source: 'cw-widget', event: 'config', config: _cfg }, '*'); } catch (_) {}
+      }, 400);
+      window._cwVoiceActive = true;
+      applyVoiceState(true, false);
+      try { _prevWidgetOpen = null; } catch (_) {}
+      return;
+    }
+
+    // ── Widget asks parent to end the popup call ─────────────────────────────
+    if (ev === 'cw-end-voice-popup') {
+      if (_parentPopupRef && !_parentPopupRef.closed) {
+        try { _parentPopupRef.postMessage({ source: 'cw-widget', event: 'request-end-call' }, '*'); } catch (_) {}
+        setTimeout(function () {
+          if (_parentPopupRef && !_parentPopupRef.closed) {
+            try { _parentPopupRef.close(); } catch (_) {}
+          }
+          _parentPopupRef = null;
+        }, 1500);
+      }
+      return;
+    }
+
+    // ── Relay popup → parent events back to widget iframes ──────────────────
+    // Popup's window.opener = this parent page, so popup events arrive here.
+    // Widget needs them for UI sync (connected, ended, transcript, etc.)
+    if (data.source === 'cw-voice-popup') {
+      document.querySelectorAll('iframe').forEach(function (f) {
+        try { f.contentWindow.postMessage(data, '*'); } catch (_) {}
+      });
+      if (ev === 'voice-popup-ended' || ev === 'voice-popup-closed') {
+        _parentPopupRef = null;
+      }
+    }
+
     if (ev === 'cw-voice-call-started' || ev === 'cw-voice-popup-opened') {
       window._cwVoiceActive = true;
       applyVoiceState(true, false);
-      // Reset _prevWidgetOpen so _syncFloatingBtn re-evaluates on next poll.
-      // This ensures the floating button appears immediately if widget is closed.
       try { _prevWidgetOpen = null; } catch (_) {}
     } else if (ev === 'cw-voice-call-ended' || ev === 'voice-popup-ended' || ev === 'cw-voice-popup-ended') {
       window._cwVoiceActive = false;
       applyVoiceState(false, false);
       _showChatwootWidget();
       try { _prevWidgetOpen = null; } catch (_) {}
+      _parentPopupRef = null;
     }
   });
 
