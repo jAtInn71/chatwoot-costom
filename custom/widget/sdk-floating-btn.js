@@ -126,16 +126,26 @@
     var svg = bubble.querySelector('svg');
     if (svg) svg.style.display = 'none';
 
-    // Layer 1 (top): custom icon centered at configured size
-    // Layer 2 (bottom): original widget gradient/color
     var iconUrl = "url('" + _cwCustomBubbleIconUrl.replace(/'/g, "\\'") + "')";
     var sizePct = (_cwCustomBubbleIconSize || 60) + '%';
     var bgColor = _cwWidgetColor || '#1f93ff';
+    var isGradient = bgColor.includes('gradient');
 
-    bubble.style.backgroundImage = iconUrl + ', ' + bgColor;
-    bubble.style.backgroundSize = sizePct + ', cover';
-    bubble.style.backgroundPosition = 'center, center';
-    bubble.style.backgroundRepeat = 'no-repeat, no-repeat';
+    if (isGradient) {
+      // Gradient: layer icon on top of gradient using background-image shorthand
+      bubble.style.backgroundImage = iconUrl + ', ' + bgColor;
+      bubble.style.backgroundSize = sizePct + ', cover';
+      bubble.style.backgroundPosition = 'center, center';
+      bubble.style.backgroundRepeat = 'no-repeat, no-repeat';
+      bubble.style.backgroundColor = '';
+    } else {
+      // Solid color: background-image only has the icon; color goes in background-color
+      bubble.style.backgroundImage = iconUrl;
+      bubble.style.backgroundSize = sizePct;
+      bubble.style.backgroundPosition = 'center';
+      bubble.style.backgroundRepeat = 'no-repeat';
+      bubble.style.backgroundColor = bgColor;
+    }
     return true;
   }
 

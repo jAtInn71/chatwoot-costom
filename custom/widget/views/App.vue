@@ -243,6 +243,20 @@ export default {
         rules.push(`.reply-time{color:${ch.replyTimeColor}!important}`);
       }
 
+      // Start/Continue Conversation button — gradient support
+      // CSS `color` does not support gradients; use background-clip:text technique.
+      if (widgetColorRaw.includes('gradient')) {
+        rules.push(
+          `.cw-start-conv-btn,.cw-start-conv-btn *{` +
+          `background:${widgetColorRaw}!important;` +
+          `-webkit-background-clip:text!important;` +
+          `-webkit-text-fill-color:transparent!important;` +
+          `background-clip:text!important;` +
+          `color:transparent!important` +
+          `}`
+        );
+      }
+
       // CTA button — targets FormKit submit + all buttons in the widget home
       if (ch.ctaBgColor || ch.ctaTextColor) {
         const bg = ch.ctaBgColor ? `background:${ch.ctaBgColor}!important;` : '';
