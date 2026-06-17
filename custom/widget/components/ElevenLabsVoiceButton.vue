@@ -226,6 +226,7 @@ export default {
             this.inlineStatusText = 'Connected';
             this.setActive(true);
             this.setConnecting(false);
+            this._callStartTime = Date.now(); // track call start for stale-signal guard
             this._startInlineHeartbeat();
             this._startInlineBackendHeartbeat();
             // Notify parent page so floating End Call button logic can run
@@ -372,7 +373,15 @@ export default {
         API.post(url, {})
           .then(r => r?.data)
           .then(d => {
-            if (d && d.end_requested) this.handleInlineCallEnded('Remote end requested');
+            if (d && d.end_requested) {
+              // Ignore end_requested within first 5s of a new call.
+              // The previous call's voice_ended_at may still be set in the backend,
+              // causing the first heartbeat of a new call to falsely return end_requested.
+              // Backend clears voice_ended_at after returning this signal, so next
+              // heartbeat (3s later) will be clean.
+              const callAge = Date.now() - (this._callStartTime || 0);
+              if (callAge > 5000) this.handleInlineCallEnded('Remote end requested');
+            }
           })
           .catch(() => {});
       };
