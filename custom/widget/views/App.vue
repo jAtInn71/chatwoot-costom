@@ -235,24 +235,19 @@ export default {
         rules.push(`#app h2+p,#app h2~p:first-of-type{${c}${s}}`);
       }
 
-      // Availability text
-      if (ch.onlineStatusColor) {
-        rules.push(`.availability-status,.online-status{color:${ch.onlineStatusColor}!important}`);
-      }
-      if (ch.replyTimeColor) {
-        rules.push(`.reply-time{color:${ch.replyTimeColor}!important}`);
-      }
-
       // Start/Continue Conversation button — gradient support
-      // CSS `color` does not support gradients; use background-clip:text technique.
+      // CSS `color` does not support gradients; use background-clip:text on the span only.
+      // The button itself gets the solid extracted color (for chevron icon + fallback).
       if (widgetColorRaw.includes('gradient')) {
+        // Button & icon: use solid extracted color
+        rules.push(`.cw-start-conv-btn{color:${solidWidgetColor}!important}`);
+        // Span (text only): gradient-text technique
         rules.push(
-          `.cw-start-conv-btn,.cw-start-conv-btn *{` +
+          `.cw-start-conv-btn span{` +
           `background:${widgetColorRaw}!important;` +
           `-webkit-background-clip:text!important;` +
           `-webkit-text-fill-color:transparent!important;` +
-          `background-clip:text!important;` +
-          `color:transparent!important` +
+          `background-clip:text!important` +
           `}`
         );
       }

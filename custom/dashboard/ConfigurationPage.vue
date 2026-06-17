@@ -57,8 +57,6 @@ export default {
       welcomeHeadingSize: 24,
       welcomeTaglineColor: '',
       welcomeTaglineSize: 14,
-      onlineStatusColor: '',
-      replyTimeColor: '',
       ctaBgColor: '',
       ctaTextColor: '',
       botBubbleBgColor: '',
@@ -121,8 +119,6 @@ export default {
       this.welcomeHeadingSize = this.inbox.welcome_heading_size || 24;
       this.welcomeTaglineColor = this.inbox.welcome_tagline_color || '';
       this.welcomeTaglineSize = this.inbox.welcome_tagline_size || 14;
-      this.onlineStatusColor = this.inbox.online_status_color || '';
-      this.replyTimeColor = this.inbox.reply_time_color || '';
       this.ctaBgColor = this.inbox.cta_bg_color || '';
       this.ctaTextColor = this.inbox.cta_text_color || '';
       this.botBubbleBgColor = this.inbox.bot_bubble_bg_color || '';
@@ -260,8 +256,6 @@ export default {
             welcome_heading_size: this.welcomeHeadingSize ? Number(this.welcomeHeadingSize) : null,
             welcome_tagline_color: this.welcomeTaglineColor.trim() || null,
             welcome_tagline_size: this.welcomeTaglineSize ? Number(this.welcomeTaglineSize) : null,
-            online_status_color: this.onlineStatusColor.trim() || null,
-            reply_time_color: this.replyTimeColor.trim() || null,
             cta_bg_color: this.ctaBgColor.trim() || null,
             cta_text_color: this.ctaTextColor.trim() || null,
             bot_bubble_bg_color: this.botBubbleBgColor.trim() || null,

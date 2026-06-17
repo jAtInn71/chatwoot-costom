@@ -44,7 +44,6 @@ class Channel::WebWidget < ApplicationRecord
                     :widget_bg_color, :widget_bg_image_url, :widget_font_family,
                     :welcome_heading_color, :welcome_heading_size,
                     :welcome_tagline_color, :welcome_tagline_size,
-                    :online_status_color, :reply_time_color,
                     :cta_bg_color, :cta_text_color,
                     :bot_bubble_bg_color, :bot_bubble_text_color,
                     :user_bubble_bg_color, :user_bubble_text_color,

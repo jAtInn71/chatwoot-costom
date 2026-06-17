@@ -111,8 +111,6 @@ export default {
       cwWelcomeHeadingSize: 24,
       cwWelcomeTaglineColor: '',
       cwWelcomeTaglineSize: 14,
-      cwOnlineStatusColor: '',
-      cwReplyTimeColor: '',
       cwCtaBgColor: '',
       cwCtaTextColor: '',
       cwInputFocusColor: '',
@@ -458,8 +456,6 @@ export default {
       this.cwWelcomeHeadingSize = this.inbox.welcome_heading_size || 24;
       this.cwWelcomeTaglineColor = this.inbox.welcome_tagline_color || '';
       this.cwWelcomeTaglineSize = this.inbox.welcome_tagline_size || 14;
-      this.cwOnlineStatusColor = this.inbox.online_status_color || '';
-      this.cwReplyTimeColor = this.inbox.reply_time_color || '';
       this.cwCtaBgColor = this.inbox.cta_bg_color || '';
       this.cwCtaTextColor = this.inbox.cta_text_color || '';
       this.cwInputFocusColor = this.inbox.input_focus_color || '';
@@ -528,8 +524,6 @@ export default {
             welcome_heading_size: this.cwWelcomeHeadingSize ? Number(this.cwWelcomeHeadingSize) : null,
             welcome_tagline_color: this.cwWelcomeTaglineColor.trim() || null,
             welcome_tagline_size: this.cwWelcomeTaglineSize ? Number(this.cwWelcomeTaglineSize) : null,
-            online_status_color: this.cwOnlineStatusColor.trim() || null,
-            reply_time_color: this.cwReplyTimeColor.trim() || null,
             cta_bg_color: this.cwCtaBgColor.trim() || null,
             cta_text_color: this.cwCtaTextColor.trim() || null,
             input_focus_color: this.cwInputFocusColor.trim() || null,
@@ -1300,22 +1294,6 @@ export default {
                         class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
                       <input v-model.number="cwWelcomeTaglineSize" type="number" min="10" max="32" placeholder="14"
                         class="w-20 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label='"We are online" Color'>
-                    <div class="flex items-center gap-2">
-                      <ColorPicker v-model="cwOnlineStatusColor" />
-                      <input v-model="cwOnlineStatusColor" type="text" placeholder="#22c55e"
-                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
-                    </div>
-                  </SettingsFieldSection>
-
-                  <SettingsFieldSection label='"Typically replies" Color'>
-                    <div class="flex items-center gap-2">
-                      <ColorPicker v-model="cwReplyTimeColor" />
-                      <input v-model="cwReplyTimeColor" type="text" placeholder="#6b7280"
-                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
                     </div>
                   </SettingsFieldSection>
 
