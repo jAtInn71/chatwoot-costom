@@ -215,29 +215,40 @@
       }
     } catch (_) {}
 
-    // ── Save widget state on every open / close ──────────────────────────
-    // Primary: use Chatwoot's own open/close events (zero polling overhead).
-    window.addEventListener('chatwoot:on-open', function () {
-      try { localStorage.setItem(WIDGET_OPEN_KEY, 'true'); } catch (_) {}
-      // SPA + widget opened: call button inside widget is visible — hide floating btn.
-      if (!isHardRefreshSite() && window._cwVoiceActive) hideBtn();
+    // ── Save widget state + sync floating button ──────────────────────────
+    // Events fire when available; polling catches everything else.
+    // _prevWidgetOpen tracks state so we only act on actual changes.
+    var _prevWidgetOpen = null;
+
+    function _syncFloatingBtn(isOpen) {
+      try { localStorage.setItem(WIDGET_OPEN_KEY, isOpen ? 'true' : 'false'); } catch (_) {}
+      if (_prevWidgetOpen === isOpen) return; // no change — nothing to do
+      _prevWidgetOpen = isOpen;
+
+      if (!isHardRefreshSite() && window._cwVoiceActive) {
+        if (isOpen) {
+          hideBtn();   // widget opened: call UI visible inside widget
+        } else {
+          showBtn();   // widget closed: show floating End Call button
+        }
+      }
+    }
+
+    window.addEventListener('chatwoot:on-open',  function () {
+      _syncFloatingBtn(true);
       setTimeout(sendPrefillData, 300);
     });
     window.addEventListener('chatwoot:on-close', function () {
-      try { localStorage.setItem(WIDGET_OPEN_KEY, 'false'); } catch (_) {}
-      // SPA + widget closed: call still active — show floating End Call button.
-      if (!isHardRefreshSite() && window._cwVoiceActive) showBtn();
+      _syncFloatingBtn(false);
     });
 
-    // Fallback: poll every second in case events are not fired in this build.
+    // Polling fallback — fires every 400ms so state-change is caught quickly
+    // even if chatwoot:on-open / chatwoot:on-close events are not dispatched.
     setInterval(function () {
       try {
-        if (window.$chatwoot) {
-          localStorage.setItem(WIDGET_OPEN_KEY,
-            window.$chatwoot.isOpen ? 'true' : 'false');
-        }
+        if (window.$chatwoot) _syncFloatingBtn(!!window.$chatwoot.isOpen);
       } catch (_) {}
-    }, 1000);
+    }, 400);
 
   });
 
@@ -304,9 +315,18 @@
     ].join(';');
 
     btn.onclick = function () {
+      // Disable button immediately so double-clicks don't fire twice.
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      // Tell widget iframe to end the call.
       document.querySelectorAll('iframe').forEach(function (f) {
         try { f.contentWindow.postMessage({ event: 'end-voice-call-from-parent' }, '*'); } catch (e) {}
       });
+      // Fallback: if widget doesn't respond in 3s, hide button ourselves.
+      setTimeout(function () {
+        window._cwVoiceActive = false;
+        hideBtn();
+      }, 3000);
     };
 
     document.body.appendChild(btn);
@@ -470,6 +490,9 @@
   // Skip: anchor links (#), mailto/tel/js links, external domains,
   //       links with target="_blank", download links, and form actions.
   document.addEventListener('click', function (e) {
+    // Hard-refresh site: let browser navigate normally — popup window handles the call.
+    if (isHardRefreshSite()) return;
+
     var a = e.target.closest('a[href]');
     if (!a || a.target || a.download) return;
 
@@ -488,8 +511,9 @@
     } catch (_) {}
   });
 
-  // Handle browser Back / Forward buttons
+  // Handle browser Back / Forward buttons (SPA sites only)
   window.addEventListener('popstate', function () {
+    if (isHardRefreshSite()) return;
     spaNavigate(location.href);
   });
 
@@ -500,6 +524,8 @@
 
   // Priority: manual chatwootSettings override → auto-detected cache → default false
   function isHardRefreshSite() {
+    // Check window.chatwootSettings (may be cleared by Chatwoot SDK, so also
+    // accept a direct localStorage write: localStorage.setItem('cw_site_hard_refresh','true'))
     var manual = window.chatwootSettings && window.chatwootSettings.hardRefreshSite;
     if (manual === true)  return true;
     if (manual === false) return false;
@@ -515,10 +541,18 @@
   function applyVoiceState(isActive, autoOpen) {
     window._cwVoiceActive = !!isActive;
     if (isActive) {
-      var widgetOpen = (localStorage.getItem(WIDGET_OPEN_KEY) === 'true');
-      // Show End Call button only when: hard-refresh site OR widget is closed.
-      // When widget is open on SPA sites, the call button inside the widget
-      // already shows a red pulsing end-call icon — no extra button needed.
+      // Read live widget state — prefer $chatwoot.isOpen (real-time) over localStorage.
+      var widgetOpen = false;
+      try {
+        if (window.$chatwoot) {
+          widgetOpen = !!window.$chatwoot.isOpen;
+        } else {
+          widgetOpen = (localStorage.getItem(WIDGET_OPEN_KEY) === 'true');
+        }
+      } catch (_) {
+        widgetOpen = (localStorage.getItem(WIDGET_OPEN_KEY) === 'true');
+      }
+
       if (isHardRefreshSite() || !widgetOpen) {
         showBtn();
       } else {
