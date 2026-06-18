@@ -90,6 +90,18 @@ services:
         done
         echo 'Database ready! Running setup...'
         bundle exec rails db:chatwoot_prepare
+
+        echo 'Setting up installation onboarding if fresh DB...'
+        bundle exec rails runner "
+          unless SuperAdmin.exists?
+            key = Redis::Alfred::CHATWOOT_INSTALLATION_ONBOARDING
+            Redis::Alfred.set(key, true)
+            puts 'Fresh DB — installation onboarding Redis key set. Visit /app to begin setup.'
+          else
+            puts 'SuperAdmin exists — skipping onboarding key.'
+          end
+        " || echo 'Onboarding key setup skipped'
+
         echo 'Starting server...'
         exec bundle exec rails s -p 3000 -b '0.0.0.0'
 
