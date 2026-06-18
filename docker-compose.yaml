@@ -92,6 +92,18 @@ services:
         bundle exec rails db:chatwoot_prepare
 
         echo 'Running custom migrations...'
+        bundle exec rails runner "
+          if ActiveRecord::Base.connection.table_exists?(:channel_web_widgets) &&
+             !ActiveRecord::Base.connection.column_exists?(:channel_web_widgets, :elevenlabs_agent_id)
+            Dir['/app/db/migrate/2026*.rb'].each do |f|
+              version = File.basename(f).split('_').first
+              ActiveRecord::Base.connection.execute(\"DELETE FROM schema_migrations WHERE version = '#{version}'\")
+            end
+            puts 'Custom migration versions cleared — fresh DB detected.'
+          else
+            puts 'Existing DB detected — skipping custom migration reset.'
+          end
+        " || true
         bundle exec rails db:migrate
         echo 'Custom migrations complete.'
 
