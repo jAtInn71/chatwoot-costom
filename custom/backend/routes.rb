@@ -678,4 +678,25 @@ Rails.application.routes.draw do
   # ----------------------------------------------------------------------
   # Routes for testing
   resources :widget_tests, only: [:index] unless Rails.env.production?
+
+  # ----------------------------------------------------------------------
+  # Enterprise API stubs — return empty success so community build
+  # doesn't redirect to onboarding when these endpoints 404.
+  unless ChatwootApp.enterprise?
+    namespace :enterprise, defaults: { format: 'json' } do
+      namespace :api do
+        namespace :v1 do
+          resources :accounts, only: [] do
+            member do
+              get  :limits,           to: 'stubs#limits'
+              post :checkout,         to: 'stubs#noop'
+              post :subscription,     to: 'stubs#noop'
+              post :toggle_deletion,  to: 'stubs#noop'
+              post :topup_checkout,   to: 'stubs#noop'
+            end
+          end
+        end
+      end
+    end
+  end
 end

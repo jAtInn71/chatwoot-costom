@@ -156,12 +156,14 @@ COPY custom/backend/models/web_widget.rb /app/app/models/channel/web_widget.rb
 COPY custom/backend/views/show.html.erb /app/app/views/widgets/show.html.erb
 COPY custom/backend/views/_inbox.json.jbuilder /app/app/views/api/v1/models/_inbox.json.jbuilder
 COPY custom/backend/views/conversations/create.json.jbuilder /app/app/views/api/v1/widget/conversations/create.json.jbuilder
+COPY custom/backend/views/widget_configs/create.json.jbuilder /app/app/views/api/v1/widget/configs/create.json.jbuilder
 COPY custom/backend/controllers/inboxes_controller.rb /app/app/controllers/api/v1/accounts/inboxes_controller.rb
 COPY custom/backend/controllers/conversations_controller.rb /app/app/controllers/api/v1/widget/conversations_controller.rb
 COPY custom/backend/controllers/concerns/website_token_helper.rb /app/app/controllers/concerns/website_token_helper.rb
 COPY custom/backend/controllers/security_headers_concern.rb /app/app/controllers/concerns/security_headers_concern.rb
 COPY custom/backend/initializers/rack_attack.rb /app/config/initializers/rack_attack.rb
 COPY custom/backend/routes.rb /app/config/routes.rb
+COPY custom/backend/controllers/enterprise/api/v1/stubs_controller.rb /app/app/controllers/enterprise/api/v1/stubs_controller.rb
 COPY custom/backend/migrations/20260520000001_add_elevenlabs_to_channel_web_widgets.rb \
      /app/db/migrate/20260520000001_add_elevenlabs_to_channel_web_widgets.rb
 COPY custom/backend/migrations/20260520000002_add_voice_agent_config_to_channel_web_widgets.rb \
@@ -176,6 +178,8 @@ COPY custom/backend/migrations/20260521000004_add_widget_appearance_to_channel_w
      /app/db/migrate/20260521000004_add_widget_appearance_to_channel_web_widgets.rb
 COPY custom/backend/migrations/20260521000005_add_message_font_size_to_channel_web_widgets.rb \
      /app/db/migrate/20260521000005_add_message_font_size_to_channel_web_widgets.rb
+COPY custom/backend/migrations/20260618000001_add_available_message_to_channel_web_widgets.rb \
+     /app/db/migrate/20260618000001_add_available_message_to_channel_web_widgets.rb
 
 # ── Frontend: Dashboard & Widget files processed by Vite in Stage 1 ────────────
 # All Vue components, store modules, and helpers are bundled by Vite in Stage 1

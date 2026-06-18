@@ -94,6 +94,8 @@ export default {
       webhookUrl: '',
       channelWelcomeTitle: '',
       channelWelcomeTagline: '',
+      channelAvailableMessage: '',
+      channelUnavailableMessage: '',
       selectedFeatureFlags: [],
       replyTime: '',
       selectedTabIndex: 0,
@@ -431,6 +433,8 @@ export default {
       this.channelWebsiteUrl = this.inbox.website_url;
       this.channelWelcomeTitle = this.inbox.welcome_title;
       this.channelWelcomeTagline = this.inbox.welcome_tagline || '';
+      this.channelAvailableMessage = this.inbox.available_message || '';
+      this.channelUnavailableMessage = this.inbox.unavailable_message || '';
       this.selectedFeatureFlags = this.inbox.selected_feature_flags || [];
       this.replyTime = this.inbox.reply_time;
       this.locktoSingleConversation = this.inbox.lock_to_single_conversation;
@@ -621,6 +625,8 @@ export default {
             webhook_url: this.webhookUrl,
             welcome_title: this.channelWelcomeTitle || '',
             welcome_tagline: this.channelWelcomeTagline || '',
+            available_message: this.channelAvailableMessage || '',
+            unavailable_message: this.channelUnavailableMessage || '',
             selectedFeatureFlags: this.selectedFeatureFlags,
             reply_time: this.replyTime || 'in_a_few_minutes',
             continuity_via_email: this.continuityViaEmail,
@@ -992,6 +998,22 @@ export default {
                   "
                   :max-length="255"
                   channel-type="Context::InboxSettings"
+                />
+              </SettingsFieldSection>
+
+              <SettingsFieldSection label="Available Message">
+                <woot-input
+                  v-model="channelAvailableMessage"
+                  class="[&>input]:!mb-0"
+                  placeholder="e.g. We're Here to Help"
+                />
+              </SettingsFieldSection>
+
+              <SettingsFieldSection label="Unavailable Message">
+                <woot-input
+                  v-model="channelUnavailableMessage"
+                  class="[&>input]:!mb-0"
+                  placeholder="e.g. We are away at the moment"
                 />
               </SettingsFieldSection>
 
