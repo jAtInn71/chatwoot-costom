@@ -29,15 +29,5 @@ do
   sleep 2;
 done
 
-# ── AUTO MIGRATE ─────────────────────────────────────────────────────────────
-# Automatically run migrations on every container start.
-# This ensures new columns/tables are always applied without manual steps.
-echo "Running database migrations..."
-bundle exec rails db:migrate
-echo "Migrations complete."
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────────────
-
 # Execute the main process of the container
 exec "$@"
