@@ -686,15 +686,11 @@ Rails.application.routes.draw do
     namespace :enterprise, defaults: { format: 'json' } do
       namespace :api do
         namespace :v1 do
-          resources :accounts, only: [] do
-            member do
-              get  :limits,           to: 'stubs#limits'
-              post :checkout,         to: 'stubs#noop'
-              post :subscription,     to: 'stubs#noop'
-              post :toggle_deletion,  to: 'stubs#noop'
-              post :topup_checkout,   to: 'stubs#noop'
-            end
-          end
+          get  'accounts/:id/limits',           to: 'stubs#limits'
+          post 'accounts/:id/checkout',         to: 'stubs#noop'
+          post 'accounts/:id/subscription',     to: 'stubs#noop'
+          post 'accounts/:id/toggle_deletion',  to: 'stubs#noop'
+          post 'accounts/:id/topup_checkout',   to: 'stubs#noop'
         end
       end
     end
