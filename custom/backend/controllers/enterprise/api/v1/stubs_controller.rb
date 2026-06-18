@@ -1,16 +1,15 @@
 module Enterprise
   module Api
     module V1
-      class StubsController < ApplicationController
-        # Return a minimal limits payload so the frontend doesn't crash.
+      class StubsController < Api::BaseController
+        # /enterprise/api/v1/accounts/:id/limits
+        # Frontend calls this on every dashboard load to check plan limits.
+        # We return an empty limits object so community build never crashes.
         def limits
-          render json: {
-            id: params[:id],
-            limits: {}
-          }, status: :ok
+          render json: { id: params[:id].to_i, limits: {} }, status: :ok
         end
 
-        # Generic no-op for enterprise POST endpoints.
+        # Generic no-op for other enterprise POST endpoints.
         def noop
           render json: {}, status: :ok
         end
