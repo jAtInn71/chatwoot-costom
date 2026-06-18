@@ -164,6 +164,7 @@ COPY custom/backend/controllers/security_headers_concern.rb /app/app/controllers
 COPY custom/backend/initializers/rack_attack.rb /app/config/initializers/rack_attack.rb
 COPY custom/backend/initializers/installation_config_guard.rb /app/config/initializers/installation_config_guard.rb
 COPY custom/backend/initializers/enterprise_limits_patch.rb /app/config/initializers/enterprise_limits_patch.rb
+COPY custom/backend/initializers/skip_onboarding.rb /app/config/initializers/skip_onboarding.rb
 COPY custom/backend/routes.rb /app/config/routes.rb
 COPY custom/backend/controllers/enterprise/api/v1/stubs_controller.rb /app/app/controllers/enterprise/api/v1/stubs_controller.rb
 COPY custom/backend/migrations/20260520000001_add_elevenlabs_to_channel_web_widgets.rb \
