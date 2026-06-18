@@ -104,6 +104,7 @@ services:
           else
             puts 'SuperAdmin exists — skipping onboarding key.'
           end
+
         " || echo 'Onboarding key setup skipped'
 
         echo 'Starting server...'
