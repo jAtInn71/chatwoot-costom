@@ -91,6 +91,10 @@ services:
         echo 'Database ready! Running setup...'
         bundle exec rails db:chatwoot_prepare
 
+        echo 'Running custom migrations...'
+        bundle exec rails db:migrate
+        echo 'Custom migrations complete.'
+
         echo 'Setting up installation onboarding if fresh DB...'
         bundle exec rails runner "
           unless SuperAdmin.exists?
