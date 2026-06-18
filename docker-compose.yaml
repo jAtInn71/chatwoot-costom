@@ -105,6 +105,13 @@ services:
             puts 'SuperAdmin exists — skipping onboarding key.'
           end
 
+          Account.find_each do |a|
+            next unless ['account_details', 'enrichment'].include?(a.custom_attributes&.dig('onboarding_step'))
+            attrs = (a.custom_attributes || {}).except('onboarding_step')
+            a.update_columns(custom_attributes: attrs)
+          end
+          puts 'Account onboarding step cleared.'
+
         " || echo 'Onboarding key setup skipped'
 
         echo 'Starting server...'
