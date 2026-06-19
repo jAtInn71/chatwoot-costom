@@ -122,6 +122,7 @@ export default {
     this.setWidgetColor(widgetColor);
     this.setWidgetColorVariable(widgetColor);
     this.setBrandingConfig({ customBrandingText: customBrandingText || '', customBrandingUrl: customBrandingUrl || '' });
+    this.applyChannelMessages();
     this.injectCustomAppearance();
 
     setHeader(window.authToken);
@@ -181,6 +182,17 @@ export default {
     ...mapActions('agent', ['fetchAvailableAgents']),
     ...mapActions('contacts', ['clearCurrentUser', 'loadSavedUserData']),
     ...mapActions('voiceAgentConfig', ['fetchVoiceAgentConfig']),
+
+    applyChannelMessages() {
+      const ch = window.chatwootWebChannel || {};
+      if (ch.availableMessage || ch.unavailableMessage) {
+        this.$store.commit('appConfig/SET_WIDGET_APP_CONFIG', {
+          ...this.$store.state.appConfig,
+          availableMessage: ch.availableMessage || '',
+          unavailableMessage: ch.unavailableMessage || '',
+        });
+      }
+    },
 
     injectCustomAppearance() {
       const ch = window.chatwootWebChannel || {};
@@ -453,6 +465,7 @@ export default {
           this.setLocale(message.locale);
           this.setBubbleLabel();
           this.setAppConfig(message);
+          this.applyChannelMessages();
           this.configReady = true;
           this.fetchAvailableAgents(websiteToken);
           this.setCampaignReadData(message.campaignsSnoozedTill);
