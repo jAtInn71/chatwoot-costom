@@ -2,7 +2,7 @@
 # Use Debian (glibc) instead of Alpine (musl). Vite + esbuild under heavy
 # minification load segfault (exit 139) on Alpine in low-memory CI runners.
 # glibc gives V8 a much more stable runtime for builds of this size.
-FROM node:18-bullseye-slim AS node-builder
+FROM node:20-bullseye-slim AS node-builder
 
 # Avoid noisy apt prompts and keep image lean
 ENV DEBIAN_FRONTEND=noninteractive
