@@ -9,7 +9,7 @@ import configMixin from '../mixins/configMixin';
 import FluentIcon from 'shared/components/FluentIcon/Index.vue';
 import ResizableTextArea from 'shared/components/ResizableTextArea.vue';
 
-import EmojiInput from 'shared/components/emoji/EmojiInput.vue';
+import EmojiPicker from 'shared/components/emoji/EmojiPicker.vue';
 
 export default {
   name: 'ChatInputWrap',
@@ -17,7 +17,7 @@ export default {
     ChatAttachmentButton,
     ChatSendButton,
     ElevenLabsVoiceButton,
-    EmojiInput,
+    EmojiPicker,
     FluentIcon,
     ResizableTextArea,
   },
@@ -208,7 +208,7 @@ export default {
           }"
         />
       </button>
-      <EmojiInput
+      <EmojiPicker
         v-if="shouldShowEmojiPicker && showEmojiPicker"
         v-on-clickaway="hideEmojiPicker"
         :on-click="emojiOnClick"
