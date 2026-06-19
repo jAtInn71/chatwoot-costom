@@ -110,14 +110,21 @@ export default {
       widgetBubbleType: 'standard',
       widgetBubbleLauncherTitle: '',
       cwFontFamily: '',
+      cwWidgetBgColor: '',
       cwWelcomeHeadingColor: '',
       cwWelcomeHeadingSize: 24,
       cwWelcomeTaglineColor: '',
       cwWelcomeTaglineSize: 14,
+      cwOnlineStatusColor: '',
+      cwReplyTimeColor: '',
       cwCtaBgColor: '',
       cwCtaTextColor: '',
       cwInputFocusColor: '',
       cwMessageFontSize: 14,
+      cwBotBubbleBgColor: '',
+      cwBotBubbleTextColor: '',
+      cwUserBubbleBgColor: '',
+      cwUserBubbleTextColor: '',
       cwBrandingText: '',
       cwBrandingUrl: '',
       cwBubbleIconUrl: '',
@@ -458,14 +465,21 @@ export default {
         this.widgetBubbleLauncherTitle = '';
       }
       this.cwFontFamily = this.inbox.widget_font_family || '';
+      this.cwWidgetBgColor = this.inbox.widget_bg_color || '';
       this.cwWelcomeHeadingColor = this.inbox.welcome_heading_color || '';
       this.cwWelcomeHeadingSize = this.inbox.welcome_heading_size || 24;
       this.cwWelcomeTaglineColor = this.inbox.welcome_tagline_color || '';
       this.cwWelcomeTaglineSize = this.inbox.welcome_tagline_size || 14;
+      this.cwOnlineStatusColor = this.inbox.online_status_color || '';
+      this.cwReplyTimeColor = this.inbox.reply_time_color || '';
       this.cwCtaBgColor = this.inbox.cta_bg_color || '';
       this.cwCtaTextColor = this.inbox.cta_text_color || '';
       this.cwInputFocusColor = this.inbox.input_focus_color || '';
       this.cwMessageFontSize = this.inbox.message_font_size || 14;
+      this.cwBotBubbleBgColor = this.inbox.bot_bubble_bg_color || '';
+      this.cwBotBubbleTextColor = this.inbox.bot_bubble_text_color || '';
+      this.cwUserBubbleBgColor = this.inbox.user_bubble_bg_color || '';
+      this.cwUserBubbleTextColor = this.inbox.user_bubble_text_color || '';
       this.cwBrandingText = this.inbox.custom_branding_text || '';
       this.cwBrandingUrl = this.inbox.custom_branding_url || '';
       this.cwBubbleIconUrl = this.inbox.custom_bubble_icon_url || '';
@@ -526,14 +540,21 @@ export default {
           id: this.inbox.id, formData: false,
           channel: {
             widget_font_family: this.cwFontFamily.trim() || null,
+            widget_bg_color: this.cwWidgetBgColor.trim() || null,
             welcome_heading_color: this.cwWelcomeHeadingColor.trim() || null,
             welcome_heading_size: this.cwWelcomeHeadingSize ? Number(this.cwWelcomeHeadingSize) : null,
             welcome_tagline_color: this.cwWelcomeTaglineColor.trim() || null,
             welcome_tagline_size: this.cwWelcomeTaglineSize ? Number(this.cwWelcomeTaglineSize) : null,
+            online_status_color: this.cwOnlineStatusColor.trim() || null,
+            reply_time_color: this.cwReplyTimeColor.trim() || null,
             cta_bg_color: this.cwCtaBgColor.trim() || null,
             cta_text_color: this.cwCtaTextColor.trim() || null,
             input_focus_color: this.cwInputFocusColor.trim() || null,
             message_font_size: this.cwMessageFontSize ? Number(this.cwMessageFontSize) : null,
+            bot_bubble_bg_color: this.cwBotBubbleBgColor.trim() || null,
+            bot_bubble_text_color: this.cwBotBubbleTextColor.trim() || null,
+            user_bubble_bg_color: this.cwUserBubbleBgColor.trim() || null,
+            user_bubble_text_color: this.cwUserBubbleTextColor.trim() || null,
           },
         });
         useAlert(this.$t('INBOX_MGMT.EDIT.API.SUCCESS_MESSAGE'));
@@ -1283,6 +1304,19 @@ export default {
               <SettingsAccordion title="Widget Appearance" class="mt-6">
                 <div class="flex flex-col gap-5">
 
+                  <SettingsFieldSection label="Widget Body Background" help-text="The main chat area background. Supports solid colors and gradients.">
+                    <div class="flex items-center gap-2 max-w-md">
+                      <ColorPicker v-model="cwWidgetBgColor" />
+                      <input v-model="cwWidgetBgColor" type="text" placeholder="#f9f9fb or linear-gradient(…)"
+                        class="flex-1 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                    <div v-if="cwWidgetBgColor" class="mt-2 flex items-center gap-2">
+                      <span class="text-xs text-n-slate-9">Preview:</span>
+                      <div class="w-16 h-10 rounded-lg border border-n-weak"
+                        :style="{ background: cwWidgetBgColor }" />
+                    </div>
+                  </SettingsFieldSection>
+
                   <SettingsFieldSection label="Font Family">
                     <div class="flex flex-col gap-2 max-w-md">
                       <select v-model="cwFontFamily"
@@ -1330,6 +1364,68 @@ export default {
                         class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
                       <input v-model.number="cwWelcomeTaglineSize" type="number" min="10" max="32" placeholder="14"
                         class="w-20 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                  </SettingsFieldSection>
+
+                  <SettingsFieldSection label="Online Status Text Color" help-text="Color for 'We are online' / 'We are offline' text.">
+                    <div class="flex items-center gap-2">
+                      <ColorPicker v-model="cwOnlineStatusColor" />
+                      <input v-model="cwOnlineStatusColor" type="text" placeholder="default"
+                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                  </SettingsFieldSection>
+
+                  <SettingsFieldSection label="Reply Time Text Color" help-text="Color for 'Typically replies in…' text.">
+                    <div class="flex items-center gap-2">
+                      <ColorPicker v-model="cwReplyTimeColor" />
+                      <input v-model="cwReplyTimeColor" type="text" placeholder="default"
+                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                  </SettingsFieldSection>
+
+                  <SettingsFieldSection label="Bot/Agent Bubble Background" help-text="Agent message bubble background. Supports gradients.">
+                    <div class="flex items-center gap-2 max-w-md">
+                      <ColorPicker v-model="cwBotBubbleBgColor" />
+                      <input v-model="cwBotBubbleBgColor" type="text" placeholder="#ffffff or linear-gradient(…)"
+                        class="flex-1 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                  </SettingsFieldSection>
+
+                  <SettingsFieldSection label="Bot/Agent Bubble Text Color">
+                    <div class="flex items-center gap-2">
+                      <ColorPicker v-model="cwBotBubbleTextColor" />
+                      <input v-model="cwBotBubbleTextColor" type="text" placeholder="#1c2024"
+                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                    <div v-if="cwBotBubbleBgColor || cwBotBubbleTextColor" class="mt-2 flex items-center gap-2">
+                      <span class="text-xs text-n-slate-9">Preview:</span>
+                      <div class="inline-block px-4 py-2 rounded-2xl text-sm shadow"
+                        :style="{ background: cwBotBubbleBgColor || '#ffffff', color: cwBotBubbleTextColor || '#1c2024' }">
+                        Agent message
+                      </div>
+                    </div>
+                  </SettingsFieldSection>
+
+                  <SettingsFieldSection label="User Bubble Background" help-text="User message bubble background. Supports gradients. Overrides widget color.">
+                    <div class="flex items-center gap-2 max-w-md">
+                      <ColorPicker v-model="cwUserBubbleBgColor" />
+                      <input v-model="cwUserBubbleBgColor" type="text" placeholder="uses widget color"
+                        class="flex-1 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                  </SettingsFieldSection>
+
+                  <SettingsFieldSection label="User Bubble Text Color">
+                    <div class="flex items-center gap-2">
+                      <ColorPicker v-model="cwUserBubbleTextColor" />
+                      <input v-model="cwUserBubbleTextColor" type="text" placeholder="auto-contrast"
+                        class="w-28 px-3 py-2 text-sm border border-n-weak rounded-lg bg-n-background text-n-slate-12 focus:outline-none focus:border-n-brand" />
+                    </div>
+                    <div v-if="cwUserBubbleBgColor || cwUserBubbleTextColor" class="mt-2 flex items-center gap-2">
+                      <span class="text-xs text-n-slate-9">Preview:</span>
+                      <div class="inline-block px-4 py-2 rounded-2xl text-sm"
+                        :style="{ background: cwUserBubbleBgColor || inbox.widget_color || '#1f93ff', color: cwUserBubbleTextColor || '#ffffff' }">
+                        User message
+                      </div>
                     </div>
                   </SettingsFieldSection>
 
@@ -1457,21 +1553,21 @@ export default {
                 :available-message="channelAvailableMessage"
                 :unavailable-message="channelUnavailableMessage"
                 :reply-time-text="replyTimeText"
-                :widget-bg-color="inbox.widget_bg_color || ''"
+                :widget-bg-color="cwWidgetBgColor"
                 :welcome-heading-color="cwWelcomeHeadingColor"
                 :welcome-heading-size="cwWelcomeHeadingSize"
                 :welcome-tagline-color="cwWelcomeTaglineColor"
                 :welcome-tagline-size="cwWelcomeTaglineSize"
-                :online-status-color="inbox.online_status_color || ''"
-                :reply-time-color="inbox.reply_time_color || ''"
+                :online-status-color="cwOnlineStatusColor"
+                :reply-time-color="cwReplyTimeColor"
                 :cta-bg-color="cwCtaBgColor"
                 :cta-text-color="cwCtaTextColor"
                 :input-focus-color="cwInputFocusColor"
                 :message-font-size="cwMessageFontSize"
-                :bot-bubble-bg-color="inbox.bot_bubble_bg_color || ''"
-                :bot-bubble-text-color="inbox.bot_bubble_text_color || ''"
-                :user-bubble-bg-color="inbox.user_bubble_bg_color || ''"
-                :user-bubble-text-color="inbox.user_bubble_text_color || ''"
+                :bot-bubble-bg-color="cwBotBubbleBgColor"
+                :bot-bubble-text-color="cwBotBubbleTextColor"
+                :user-bubble-bg-color="cwUserBubbleBgColor"
+                :user-bubble-text-color="cwUserBubbleTextColor"
               />
             </div>
           </div>
