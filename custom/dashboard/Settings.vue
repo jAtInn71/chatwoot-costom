@@ -37,7 +37,7 @@ import { LocalStorage } from 'shared/helpers/localStorage';
 import Editor from 'dashboard/components-next/Editor/Editor.vue';
 import ColorPicker from 'dashboard/components-next/colorpicker/ColorPicker.vue';
 import SelectInput from 'dashboard/components-next/select/Select.vue';
-import Widget from 'dashboard/modules/widget-preview/components/Widget.vue';
+import Widget from './widget-preview/Widget.vue';
 import AccessToken from 'dashboard/routes/dashboard/settings/profile/AccessToken.vue';
 import { copyTextToClipboard } from 'shared/helpers/clipboard';
 
@@ -98,6 +98,7 @@ export default {
       channelUnavailableMessage: '',
       selectedFeatureFlags: [],
       replyTime: '',
+      replyTimeText: '',
       selectedTabIndex: 0,
       selectedPortalSlug: '',
       showBusinessNameInput: false,
@@ -437,6 +438,7 @@ export default {
       this.channelUnavailableMessage = this.inbox.unavailable_message || '';
       this.selectedFeatureFlags = this.inbox.selected_feature_flags || [];
       this.replyTime = this.inbox.reply_time;
+      this.replyTimeText = this.inbox.reply_time_text || '';
       this.locktoSingleConversation = this.inbox.lock_to_single_conversation;
       this.selectedPortalSlug = this.inbox.help_center
         ? this.inbox.help_center.slug
@@ -629,6 +631,7 @@ export default {
             unavailable_message: this.channelUnavailableMessage || '',
             selectedFeatureFlags: this.selectedFeatureFlags,
             reply_time: this.replyTime || 'in_a_few_minutes',
+            reply_time_text: this.replyTimeText || '',
             continuity_via_email: this.continuityViaEmail,
           },
         };
@@ -1137,6 +1140,17 @@ export default {
               </SettingsFieldSection>
 
               <SettingsFieldSection
+                label="Custom Reply Time Text"
+                help-text="Overrides the reply time dropdown above with your own text. Leave blank to use the dropdown value."
+              >
+                <woot-input
+                  v-model="replyTimeText"
+                  class="[&>input]:!mb-0"
+                  placeholder="e.g. We usually respond within 5 minutes"
+                />
+              </SettingsFieldSection>
+
+              <SettingsFieldSection
                 :label="$t('INBOX_MGMT.FEATURES.LABEL')"
                 class="[&>div]:!items-start [&>div>label]:mt-2"
               >
@@ -1440,6 +1454,24 @@ export default {
                 :widget-bubble-launcher-title="widgetBubbleLauncherTitle"
                 :widget-bubble-type="widgetBubbleType"
                 :web-widget-script="inbox.web_widget_script"
+                :available-message="channelAvailableMessage"
+                :unavailable-message="channelUnavailableMessage"
+                :reply-time-text="replyTimeText"
+                :widget-bg-color="inbox.widget_bg_color || ''"
+                :welcome-heading-color="cwWelcomeHeadingColor"
+                :welcome-heading-size="cwWelcomeHeadingSize"
+                :welcome-tagline-color="cwWelcomeTaglineColor"
+                :welcome-tagline-size="cwWelcomeTaglineSize"
+                :online-status-color="inbox.online_status_color || ''"
+                :reply-time-color="inbox.reply_time_color || ''"
+                :cta-bg-color="cwCtaBgColor"
+                :cta-text-color="cwCtaTextColor"
+                :input-focus-color="cwInputFocusColor"
+                :message-font-size="cwMessageFontSize"
+                :bot-bubble-bg-color="inbox.bot_bubble_bg_color || ''"
+                :bot-bubble-text-color="inbox.bot_bubble_text_color || ''"
+                :user-bubble-bg-color="inbox.user_bubble_bg_color || ''"
+                :user-bubble-text-color="inbox.user_bubble_text_color || ''"
               />
             </div>
           </div>

@@ -56,8 +56,13 @@ COPY custom/widget/api/endpoint.js app/javascript/widget/api/endPoints.js
 COPY custom/widget/api/inboxConfig.js app/javascript/widget/api/inboxConfig.js
 COPY custom/dashboard/ConfigurationPage.vue app/javascript/dashboard/routes/dashboard/settings/inbox/settingsPage/ConfigurationPage.vue
 COPY custom/dashboard/Settings.vue app/javascript/dashboard/routes/dashboard/settings/inbox/Settings.vue
+COPY custom/dashboard/widget-preview/Widget.vue app/javascript/dashboard/routes/dashboard/settings/inbox/widget-preview/Widget.vue
+COPY custom/dashboard/widget-preview/WidgetHead.vue app/javascript/dashboard/routes/dashboard/settings/inbox/widget-preview/WidgetHead.vue
+COPY custom/dashboard/widget-preview/WidgetBody.vue app/javascript/dashboard/routes/dashboard/settings/inbox/widget-preview/WidgetBody.vue
+COPY custom/dashboard/widget-preview/WidgetFooter.vue app/javascript/dashboard/routes/dashboard/settings/inbox/widget-preview/WidgetFooter.vue
 COPY custom/dashboard/ResolveAction.vue app/javascript/dashboard/components/buttons/ResolveAction.vue
 COPY custom/dashboard/ColorPicker.vue app/javascript/dashboard/components-next/colorpicker/ColorPicker.vue
+COPY custom/widget/components/Availability/AvailabilityContainer.vue app/javascript/widget/components/Availability/AvailabilityContainer.vue
 COPY custom/sdk/IFrameHelper.js app/javascript/sdk/IFrameHelper.js
 
 # Voice agent (ElevenLabs / Dograh / etc.) configuration is now done per
@@ -183,6 +188,8 @@ COPY custom/backend/migrations/20260521000005_add_message_font_size_to_channel_w
      /app/db/migrate/20260521000005_add_message_font_size_to_channel_web_widgets.rb
 COPY custom/backend/migrations/20260618000001_add_available_message_to_channel_web_widgets.rb \
      /app/db/migrate/20260618000001_add_available_message_to_channel_web_widgets.rb
+COPY custom/backend/migrations/20260619000001_add_reply_time_text_to_channel_web_widgets.rb \
+     /app/db/migrate/20260619000001_add_reply_time_text_to_channel_web_widgets.rb
 
 # ── Frontend: Dashboard & Widget files processed by Vite in Stage 1 ────────────
 # All Vue components, store modules, and helpers are bundled by Vite in Stage 1

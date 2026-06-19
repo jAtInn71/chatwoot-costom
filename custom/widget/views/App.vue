@@ -185,11 +185,12 @@ export default {
 
     applyChannelMessages() {
       const ch = window.chatwootWebChannel || {};
-      if (ch.availableMessage || ch.unavailableMessage) {
+      if (ch.availableMessage || ch.unavailableMessage || ch.replyTimeText) {
         this.$store.commit('appConfig/SET_WIDGET_APP_CONFIG', {
           ...this.$store.state.appConfig,
           availableMessage: ch.availableMessage || '',
           unavailableMessage: ch.unavailableMessage || '',
+          replyTimeText: ch.replyTimeText || '',
         });
       }
     },
@@ -208,6 +209,15 @@ export default {
 
       // Override Chatwoot's --color-n-brand so focus rings use widget color
       rules.push(`:root{--color-n-brand:${solidWidgetColor}!important}`);
+
+      // Widget body background (solid or gradient)
+      if (ch.widgetBgColor) {
+        const bg = ch.widgetBgColor.trim();
+        rules.push(
+          `.bg-n-slate-2{background:${bg}!important}` +
+          `.dark .bg-n-solid-1{background:${bg}!important}`
+        );
+      }
 
       // Input focus — override box-shadow (Chatwoot uses shadow-n-brand on focus)
       const focusColor = ch.inputFocusColor || solidWidgetColor;
@@ -278,10 +288,11 @@ export default {
         );
       }
 
-      // Remove white card background from unread notification popup, keep content visible
+      // Notification popup: transparent card chrome but give it an explicit
+      // white content background so widgetBgColor doesn't bleed through.
       rules.push(
         `.unread-notification-wrap{background:transparent!important;box-shadow:none!important;border:none!important}` +
-        `.unread-notification-wrap .notification-message{background:transparent!important;box-shadow:none!important}` +
+        `.unread-notification-wrap .notification-message{background:#fff!important;box-shadow:0 1px 4px rgba(0,0,0,.12)!important;border-radius:8px!important}` +
         `.unread-notification{background:transparent!important;box-shadow:none!important;border:none!important}`
       );
 

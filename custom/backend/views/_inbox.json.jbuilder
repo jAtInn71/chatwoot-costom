@@ -63,6 +63,7 @@ json.custom_bubble_icon_size resource.channel.try(:custom_bubble_icon_size) || 6
 json.reply_time resource.channel.try(:reply_time)
 json.available_message resource.channel.try(:available_message)
 json.unavailable_message resource.channel.try(:unavailable_message)
+json.reply_time_text resource.channel.try(:reply_time_text)
 if resource.web_widget?
   json.hmac_token resource.channel.try(:hmac_token) if Current.account_user&.administrator?
   json.pre_chat_form_enabled resource.channel.try(:pre_chat_form_enabled)
