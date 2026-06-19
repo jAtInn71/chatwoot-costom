@@ -14,11 +14,11 @@ RUN apt-get update && \
 
 WORKDIR /chatwoot-src
 
-# ── STEP 1: Clone upstream Chatwoot (specific stable version with Vite 5) ────
-# v3.15.0 uses Vite 5 which is compatible with vite-plugin-ruby (ESM safe).
-# Latest main branch uses Vite 6 which causes ERR_REQUIRE_ESM build failure
-# because vite-plugin-ruby is ESM-only and Vite 6's CJS bundler can't require() it.
-RUN git clone --depth 1 --branch v3.15.0 https://github.com/chatwoot/chatwoot.git .
+# ── STEP 1: Clone latest upstream Chatwoot ────────────────────────────────────
+RUN git clone --depth 1 https://github.com/chatwoot/chatwoot.git .
+
+# Fix Vite 6 ESM — vite-plugin-ruby is ESM-only, patch require() to import()
+RUN sed -i "s/require('vite-plugin-ruby')/await import('vite-plugin-ruby')/" vite.config.ts
 
 # ── STEP 2: Install dependencies with persistent pnpm cache ─────────────────
 # --mount=type=cache persists the pnpm content-addressable store ACROSS builds.
@@ -117,7 +117,7 @@ RUN echo "=== BUILD OUTPUT ===" && \
     echo "==================="
 
 # ── Stage 2: Final Chatwoot image ─────────────────────────────────────────────
-FROM chatwoot/chatwoot:v3.15.0
+FROM chatwoot/chatwoot:latest
 
 # Copy ALL public build output
 COPY --from=node-builder /chatwoot-src/public /app/public
