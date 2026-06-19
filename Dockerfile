@@ -14,13 +14,11 @@ RUN apt-get update && \
 
 WORKDIR /chatwoot-src
 
-# ── STEP 1: Clone upstream Chatwoot (separate layer from install) ────────────
-# Keeping git clone and pnpm install as SEPARATE RUN steps is critical:
-#   • If only custom files change  → both layers are cached → build is instant
-#   • If upstream Chatwoot changes → git clone re-runs but pnpm cache mount
-#     (below) means packages are NOT re-downloaded from npm registry (~8 min saved)
-#   • If neither changes           → both cached, Vite build takes ~3-5 min only
-RUN git clone --depth 1 https://github.com/chatwoot/chatwoot.git .
+# ── STEP 1: Clone upstream Chatwoot (specific stable version with Vite 5) ────
+# v3.15.0 uses Vite 5 which is compatible with vite-plugin-ruby (ESM safe).
+# Latest main branch uses Vite 6 which causes ERR_REQUIRE_ESM build failure
+# because vite-plugin-ruby is ESM-only and Vite 6's CJS bundler can't require() it.
+RUN git clone --depth 1 --branch v3.15.0 https://github.com/chatwoot/chatwoot.git .
 
 # ── STEP 2: Install dependencies with persistent pnpm cache ─────────────────
 # --mount=type=cache persists the pnpm content-addressable store ACROSS builds.
@@ -119,7 +117,7 @@ RUN echo "=== BUILD OUTPUT ===" && \
     echo "==================="
 
 # ── Stage 2: Final Chatwoot image ─────────────────────────────────────────────
-FROM chatwoot/chatwoot:latest
+FROM chatwoot/chatwoot:v3.15.0
 
 # Copy ALL public build output
 COPY --from=node-builder /chatwoot-src/public /app/public
