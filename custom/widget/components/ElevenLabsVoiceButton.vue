@@ -76,7 +76,13 @@ export default {
     hasElevenLabsVoiceEnabled() {
       return this.isVoiceAgentEnabled && this.voiceAgentProvider === 'elevenlabs';
     },
-    shouldShowButton() { return this.hasElevenLabsVoiceEnabled; },
+    hasDograhVoiceEnabled() {
+      return this.isVoiceAgentEnabled && this.voiceAgentProvider === 'dograh';
+    },
+    hasAnyVoiceEnabled() {
+      return this.hasElevenLabsVoiceEnabled || this.hasDograhVoiceEnabled;
+    },
+    shouldShowButton() { return this.hasAnyVoiceEnabled; },
     buttonClasses() {
       const sizeMap = { small: 'min-h-7 min-w-7', medium: 'min-h-9 min-w-9', large: 'min-h-10 min-w-10' };
       return [
@@ -156,13 +162,17 @@ export default {
     },
 
     async startCall() {
-      if (!this.hasElevenLabsVoiceEnabled) return;
+      if (!this.hasAnyVoiceEnabled) return;
+      if (this.hasDograhVoiceEnabled) {
+        await this.startDograhCall();
+        return;
+      }
       await this.startInlineCall();
     },
 
     // ── Inline call (SPA mode — no popup window) ───────────────────────────
     async startInlineCall() {
-      if (!this.hasElevenLabsVoiceEnabled) return;
+      if (!this.hasAnyVoiceEnabled) return;
 
       // Increment generation FIRST — any in-flight callbacks from a previous
       // session will see their captured myGen no longer matches and bail out.
@@ -295,7 +305,15 @@ export default {
     },
 
     async endInlineCall() {
-      // Grab reference and immediately null it — prevents double-end if called twice.
+      // Dograh path — close WebSocket + WebRTC
+      if (this._dograhWs || this._dograhPc) {
+        this.inlineStatusText = 'Ending…';
+        this._cleanupDograh();
+        this.handleInlineCallEnded('Call ended');
+        return;
+      }
+
+      // ElevenLabs path — grab reference and immediately null it
       const conv = _inlineConversation;
       _inlineConversation = null;
 
@@ -308,9 +326,132 @@ export default {
       try { await conv.endSession(); }
       catch (e) { console.warn('[VOICE-INLINE] endSession threw:', e?.message); }
 
-      // Always call handleInlineCallEnded — do NOT rely on onDisconnect firing.
-      // ElevenLabs SDK sometimes does not fire onDisconnect after endSession.
       this.handleInlineCallEnded('Call ended');
+    },
+
+    // ── Dograh call (WebRTC + WebSocket signaling) ──────────────────────
+    async startDograhCall() {
+      if (!this.hasDograhVoiceEnabled) return;
+      const myGen = ++_callGeneration;
+      if (this.isConnecting) return;
+
+      this.isConnecting = true;
+      this.inlineStatus = 'connecting';
+      this.inlineStatusText = 'Requesting mic…';
+      this.setConnecting(true);
+
+      try {
+        const config = await this._buildConfig();
+        this.inlineConfig = config;
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+
+        this.inlineStatusText = 'Connecting to Dograh…';
+
+        // Generate peer connection ID
+        const pcId = 'cw_' + Math.random().toString(36).slice(2, 10);
+        const wsUrl = `${config.dograhWsUrl}/${config.dograhWorkflowId}/${pcId}`;
+
+        // Connect WebSocket for signaling
+        const ws = new WebSocket(wsUrl);
+        this._dograhWs = ws;
+
+        // Create WebRTC peer connection
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        this._dograhPc = pc;
+
+        // Get mic audio and add to peer connection
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this._dograhStream = audioStream;
+        audioStream.getTracks().forEach(track => pc.addTrack(track, audioStream));
+
+        // Handle remote audio
+        pc.ontrack = (event) => {
+          const audio = new Audio();
+          audio.srcObject = event.streams[0];
+          audio.play().catch(() => {});
+          this._dograhRemoteAudio = audio;
+        };
+
+        // ICE candidates → send via WebSocket
+        pc.onicecandidate = (event) => {
+          if (event.candidate && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'ice-candidate', candidate: event.candidate }));
+          }
+        };
+
+        ws.onopen = async () => {
+          if (myGen !== _callGeneration) return;
+          // Send auth if API key present
+          if (config.dograhApiKey) {
+            ws.send(JSON.stringify({ type: 'auth', api_key: config.dograhApiKey }));
+          }
+          // Create and send SDP offer
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          ws.send(JSON.stringify({ type: 'offer', sdp: offer.sdp }));
+        };
+
+        ws.onmessage = async (event) => {
+          if (myGen !== _callGeneration) return;
+          const msg = JSON.parse(event.data);
+
+          if (msg.type === 'answer') {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: msg.sdp }));
+            this.isConnecting = false;
+            this.isCallActive = true;
+            this.inlineStatus = 'connected';
+            this.inlineStatusText = 'Connected';
+            this.setActive(true);
+            this.setConnecting(false);
+            this._callStartTime = Date.now();
+            this._startInlineHeartbeat();
+            this._startInlineBackendHeartbeat();
+            try { window.parent.postMessage({ event: 'cw-voice-call-started' }, '*'); } catch (_) {}
+            try { localStorage.setItem('cw_voice_active', '1'); } catch (_) {}
+          } else if (msg.type === 'ice-candidate' && msg.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {});
+          } else if (msg.type === 'rtf-user-transcription' || msg.type === 'rtf-bot-text') {
+            // Dograh transcript events → send to Chatwoot
+            const source = msg.type === 'rtf-user-transcription' ? 'user' : 'ai';
+            const text = (msg.text || msg.content || '').trim();
+            if (text) {
+              const cwConv = this.getCwConversationToken();
+              let url = buildConvUrl('/api/v1/widget/conversations/voice_transcript');
+              if (cwConv) url += `&cw_conversation=${encodeURIComponent(cwConv)}`;
+              API.post(url, { source, content: text }).catch(() => {});
+              try { this.$store.dispatch('conversation/fetchOldConversations'); } catch (_) {}
+            }
+          } else if (msg.type === 'call-ended' || msg.type === 'error') {
+            this.handleInlineCallEnded(msg.type === 'error' ? 'Error' : 'Call ended');
+          }
+        };
+
+        ws.onclose = () => {
+          if (myGen !== _callGeneration) return;
+          if (this.isCallActive) this.handleInlineCallEnded('Call ended');
+        };
+
+        ws.onerror = () => {
+          if (myGen !== _callGeneration) return;
+          this.inlineStatus = 'error';
+          this.inlineStatusText = 'Connection failed';
+          this.isConnecting = false;
+          this.setConnecting(false);
+          setTimeout(() => { if (this.inlineStatus === 'error') this.inlineStatus = 'idle'; }, 3000);
+        };
+
+      } catch (error) {
+        console.error('[VOICE-DOGRAH] startDograhCall failed:', error?.message);
+        this.isConnecting = false;
+        this.inlineStatus = 'error';
+        this.inlineStatusText = (error?.name === 'NotAllowedError') ? 'Mic denied' : 'Failed to connect';
+        this.setConnecting(false);
+        setTimeout(() => { if (this.inlineStatus === 'error') this.inlineStatus = 'idle'; }, 3000);
+      }
     },
 
     handleInlineCallEnded(label) {
@@ -323,6 +464,9 @@ export default {
       this.inlineStatusText = label || 'Call ended';
       this.inlineSpeaking = false;
       _inlineConversation = null;
+
+      // Clean up Dograh WebRTC/WebSocket resources
+      this._cleanupDograh();
 
       this._stopInlineHeartbeat();
       this._stopInlineBackendHeartbeat();
@@ -531,6 +675,17 @@ export default {
       } catch (_) {}
     },
 
+    _cleanupDograh() {
+      try { this._dograhStream?.getTracks().forEach(t => t.stop()); } catch (_) {}
+      try { this._dograhPc?.close(); } catch (_) {}
+      try { this._dograhWs?.close(); } catch (_) {}
+      try { this._dograhRemoteAudio?.pause(); } catch (_) {}
+      this._dograhStream = null;
+      this._dograhPc = null;
+      this._dograhWs = null;
+      this._dograhRemoteAudio = null;
+    },
+
     async _buildConfig() {
       const { data } = await API.get(
         buildConvUrl('/api/v1/widget/conversations/voice_signed_url')
@@ -548,6 +703,7 @@ export default {
 
       const config = {
         signedUrl,
+        provider:           data?.provider || 'elevenlabs',
         baseUrl:            window.location.origin,
         websiteToken:       WEBSITE_TOKEN || '',
         color:              this.widgetColor || ch.widgetColor || this.color || '#1f93ff',
@@ -559,6 +715,10 @@ export default {
         cwConversation:     this.getCwConversationToken() || '',
         cwConversationId:   String(convId),
         cwConversationUrl:  convUrl,
+        // Dograh-specific
+        dograhWsUrl:        data?.signed_url || '',
+        dograhWorkflowId:   data?.workflow_id || '',
+        dograhApiKey:       data?.api_key || '',
       };
       return config;
     },
