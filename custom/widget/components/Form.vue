@@ -272,10 +272,10 @@ export default {
       const fullName     = this.formValues.fullName     || '';
       const phoneNumber  = this.formValues.phoneNumber  || '';
 
-      // In restart mode the message box is hidden; use a silent default so the
-      // conversation is created correctly without requiring user input.
+      // In restart / campaign mode the message box is hidden; use a silent
+      // default so the conversation is created correctly without user input.
       let message = (this.formValues.message || '').trim();
-      if (this.isRestartMode && !message) {
+      if ((this.isRestartMode || this.hasActiveCampaign) && !message) {
         message = 'Hello';
       }
 
