@@ -98,15 +98,8 @@ export default {
       if (this.isConnecting) return this.$t('VOICE_AGENT.CONNECTING');
       return this.$t('VOICE_AGENT.START_CALL');
     },
-    showInlineCallPanel() {
-      return this.inlineStatus !== 'idle';
-    },
-    inlineAgentName() {
-      return this.inlineConfig?.agentName || 'AI Assistant';
-    },
-    inlineAvatarSrc() {
-      if (this.inlineConfig?.avatar) return this.inlineConfig.avatar;
-      return this._makeFallbackAvatar(this.inlineAgentName, this.inlineConfig?.color || '#1f93ff');
+    isDograhCallLive() {
+      return this.hasDograhVoiceEnabled && (this.inlineStatus === 'connecting' || this.inlineStatus === 'connected');
     },
   },
 
@@ -402,9 +395,11 @@ export default {
             }
 
             // Transcript events → send to Chatwoot
-            if (msg.type === 'rtf-user-transcription' || msg.type === 'rtf-bot-text') {
-              const source = msg.type === 'rtf-user-transcription' ? 'user' : 'ai';
-              const text = (msg.text || msg.content || msg.transcript || '').trim();
+            const isUserTranscript = msg.type === 'rtf-user-transcription' || msg.type === 'USER_TRANSCRIPTION' || msg.type === 'user_transcription';
+            const isBotTranscript = msg.type === 'rtf-bot-text' || msg.type === 'BOT_TEXT' || msg.type === 'bot_text';
+            if (isUserTranscript || isBotTranscript) {
+              const source = isUserTranscript ? 'user' : 'ai';
+              const text = (msg.text || msg.content || msg.transcript || msg.payload?.text || msg.payload?.content || msg.payload?.transcript || '').trim();
               if (text) {
                 const cwConv = this.getCwConversationToken();
                 let url = buildConvUrl('/api/v1/widget/conversations/voice_transcript');
@@ -414,11 +409,11 @@ export default {
               }
             }
 
-            if (msg.type === 'rtf-bot-stopped-speaking') {
+            if (msg.type === 'rtf-bot-stopped-speaking' || msg.type === 'BOT_STOPPED_SPEAKING' || msg.type === 'bot_stopped_speaking') {
               this.inlineSpeaking = false;
             }
 
-            if (msg.type === 'rtf-bot-text') {
+            if (isBotTranscript) {
               this.inlineSpeaking = true;
             }
 
@@ -536,21 +531,6 @@ export default {
 
     _stopInlineBackendHeartbeat() {
       if (_inlineBackendHeartbeatTimer) { clearInterval(_inlineBackendHeartbeatTimer); _inlineBackendHeartbeatTimer = null; }
-    },
-
-    _makeFallbackAvatar(name, color) {
-      const initials = (name || 'AI')
-        .split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-      const svg =
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">` +
-        `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">` +
-        `<stop offset="0%" stop-color="${color}" stop-opacity="1"/>` +
-        `<stop offset="100%" stop-color="${color}" stop-opacity="0.82"/>` +
-        `</linearGradient></defs>` +
-        `<circle cx="50" cy="50" r="50" fill="url(#g)"/>` +
-        `<text x="50" y="62" text-anchor="middle" font-family="-apple-system, sans-serif" font-size="36" font-weight="600" fill="white">${initials}</text>` +
-        `</svg>`;
-      return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
     },
 
     endCall() {
@@ -844,42 +824,6 @@ export default {
       </svg>
     </button>
 
-    <!-- Inline call overlay — shown during Dograh WebRTC calls -->
-    <div v-if="showInlineCallPanel" class="cw-vi-overlay">
-      <div class="cw-vi-header">
-        <span class="cw-vi-title">VOICE CALL</span>
-        <span v-if="inlineStatus === 'connected'" class="cw-vi-live">
-          <span class="cw-vi-live-dot" />LIVE
-        </span>
-      </div>
-
-      <div class="cw-vi-body">
-        <div class="cw-vi-avatar-wrap" :class="{ 'cw-vi-speaking': inlineSpeaking }">
-          <div class="cw-vi-ring cw-vi-ring1" />
-          <div class="cw-vi-ring cw-vi-ring2" />
-          <img :src="inlineAvatarSrc" :alt="inlineAgentName" class="cw-vi-avatar" />
-        </div>
-        <div class="cw-vi-name">{{ inlineAgentName }}</div>
-        <div class="cw-vi-role">Voice Assistant</div>
-        <div class="cw-vi-badge" :data-state="inlineStatus">
-          <span class="cw-vi-badge-dot" />
-          {{ inlineStatusText }}
-        </div>
-      </div>
-
-      <div class="cw-vi-footer">
-        <button
-          class="cw-vi-end-btn"
-          :disabled="inlineStatus === 'ended'"
-          @click="endInlineCall"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3.5 14.5c5.5-5 11.5-5 17 0 .8.7.9 2 0 2.7l-2.1 1.6c-.5.4-1.2.4-1.7 0l-2-1.7a1.5 1.5 0 0 1-.5-1.1V14a9.8 9.8 0 0 0-4.4 0v0c0 .4-.2.8-.5 1.1l-2 1.6c-.5.4-1.2.4-1.7 0L3.5 15c-.5-.6-.4-1.7 0-2.5Z" transform="rotate(135 12 12)" />
-          </svg>
-          End Call
-        </button>
-      </div>
-    </div>
   </div>
 
 </template>
@@ -916,172 +860,4 @@ export default {
   50%        { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.08); }
 }
 
-/* ── Inline call overlay (SPA mode) ────────────────────────────────────── */
-.cw-vi-overlay {
-  position: fixed;
-  inset: 0;
-  background: #fff;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
-.cw-vi-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px 9px;
-  border-bottom: 0.5px solid rgba(15, 23, 42, 0.10);
-  flex-shrink: 0;
-}
-.cw-vi-title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  color: #64748b;
-  text-transform: uppercase;
-}
-.cw-vi-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #e8533a;
-}
-.cw-vi-live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e8533a;
-  animation: cw-vi-pulse-dot 1.4s ease-in-out infinite;
-}
-@keyframes cw-vi-pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.8); }
-}
-.cw-vi-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 16px 8px;
-  min-height: 0;
-}
-.cw-vi-avatar-wrap {
-  position: relative;
-  width: min(38vmin, 120px);
-  height: min(38vmin, 120px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: min(3vmin, 14px);
-  flex-shrink: 0;
-}
-.cw-vi-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 1.5px solid rgba(66, 153, 225, 0.22);
-}
-.cw-vi-ring1 { width: 100%; height: 100%; }
-.cw-vi-ring2 { width: 80%; height: 80%; border-color: rgba(66, 153, 225, 0.40); }
-.cw-vi-speaking .cw-vi-ring2 { animation: cw-vi-pulse-ring 1.6s ease-in-out infinite; }
-.cw-vi-speaking .cw-vi-ring1 { animation: cw-vi-pulse-ring 1.6s ease-in-out infinite 0.4s; }
-@keyframes cw-vi-pulse-ring {
-  0%, 100% { opacity: 0.6; transform: scale(1); }
-  50%       { opacity: 1;   transform: scale(1.04); }
-}
-.cw-vi-avatar {
-  width: 62%;
-  height: 62%;
-  border-radius: 50%;
-  border: 2px solid #3b8fe8;
-  object-fit: cover;
-  background: rgba(66, 153, 225, 0.22);
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  transition: transform 240ms ease, box-shadow 240ms ease;
-}
-.cw-vi-speaking .cw-vi-avatar {
-  transform: scale(1.04);
-  box-shadow: 0 0 0 5px rgba(66, 153, 225, 0.22);
-}
-.cw-vi-name {
-  font-size: clamp(12px, 4vmin, 16px);
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 2px;
-  max-width: 90%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-align: center;
-}
-.cw-vi-role {
-  font-size: clamp(10px, 3vmin, 12px);
-  color: #64748b;
-  margin-bottom: min(3vmin, 12px);
-}
-.cw-vi-badge {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: clamp(9px, 2.8vmin, 11px);
-  font-weight: 500;
-}
-.cw-vi-badge[data-state="connecting"] {
-  background: #fffbeb;
-  border: 0.5px solid #fde68a;
-  color: #b45309;
-}
-.cw-vi-badge[data-state="connected"] {
-  background: #edfaf3;
-  border: 0.5px solid #a3e9c0;
-  color: #1b7a47;
-}
-.cw-vi-badge[data-state="ended"],
-.cw-vi-badge[data-state="error"] {
-  background: #f1f5f9;
-  border: 0.5px solid #cbd5e1;
-  color: #64748b;
-}
-.cw-vi-badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.cw-vi-footer {
-  padding: 0 14px 10px;
-  flex-shrink: 0;
-}
-.cw-vi-end-btn {
-  width: 100%;
-  background: #e8533a;
-  border: none;
-  border-radius: 24px;
-  color: #fff;
-  font-size: clamp(11px, 3.5vmin, 13px);
-  font-weight: 600;
-  padding: clamp(8px, 2.5vmin, 11px) 0;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: background 0.15s;
-}
-.cw-vi-end-btn:hover:not(:disabled) { background: #c93f28; }
-.cw-vi-end-btn:active:not(:disabled) { transform: scale(0.98); }
-.cw-vi-end-btn:disabled {
-  background: #cbd5e1;
-  color: #64748b;
-  cursor: not-allowed;
-}
 </style>
