@@ -375,24 +375,31 @@ export default {
         `.unread-notification{background:transparent!important;box-shadow:none!important;border:none!important}`
       );
 
-      // ── Emoji picker: constrain within widget ──────────────────────
-      rules.push(
-        `.emoji-dialog{` +
-        `position:fixed!important;` +
-        `bottom:60px!important;` +
-        `top:auto!important;` +
-        `right:8px!important;` +
-        `left:8px!important;` +
-        `width:auto!important;` +
-        `max-width:320px!important;` +
-        `max-height:calc(100vh - 140px)!important;` +
-        `z-index:9999!important;` +
-        `border-radius:12px!important;` +
-        `overflow:hidden!important;` +
-        `}`
-      );
-      rules.push(`.emoji-dialog .emoji-item{max-height:calc(100vh - 260px)!important}`);
-      rules.push(`.emoji-dialog::before{display:none!important}`);
+      // ── Emoji picker: constrain within widget iframe ────────────────
+      // Override Tailwind utility classes (w-80, absolute, -top-[302px]) with
+      // high-specificity selectors so the picker stays inside the iframe bounds.
+      rules.push([
+        '#app .emoji-dialog,',
+        '#app div.emoji-dialog,',
+        'div[role="dialog"].emoji-dialog{',
+        '  position:fixed!important;',
+        '  bottom:56px!important;',
+        '  top:auto!important;',
+        '  right:12px!important;',
+        '  left:auto!important;',
+        '  width:calc(100vw - 24px)!important;',
+        '  max-width:320px!important;',
+        '  height:300px!important;',
+        '  max-height:calc(100vh - 120px)!important;',
+        '  z-index:9999!important;',
+        '  border-radius:12px!important;',
+        '  overflow:hidden!important;',
+        '  box-shadow:0 -4px 20px rgba(0,0,0,0.15)!important;',
+        '}',
+      ].join(''));
+      rules.push('#app .emoji-dialog::before{display:none!important}');
+      rules.push('#app .emoji-dialog .emoji-item{height:200px!important;max-height:200px!important;overflow-y:auto!important}');
+      rules.push('#app .emoji-dialog input[type="text"]{font-size:14px!important}');
 
       // ── Auto-contrast: branding / footer ───────────────────────────
       if (ch.widgetBgColor) {
@@ -404,18 +411,23 @@ export default {
           const brandStrong = isDark2 ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
           rules.push(`.branding--text{color:${brandColor}!important}`);
           rules.push(`.branding--text a,.branding--text strong{color:${brandStrong}!important}`);
-          rules.push(`.text-n-slate-11{color:${brandColor}!important}`);
+          // Only scope to conversation area — not emoji/header/footer
+          rules.push(`.conversation-wrap .text-n-slate-11{color:${brandColor}!important}`);
         }
       }
 
-      // ── Mobile responsive ──────────────────────────────────────────
-      rules.push(
-        `@media(max-width:400px){` +
-        `.emoji-dialog{left:4px!important;right:4px!important;max-width:none!important;bottom:56px!important}` +
-        `.conversation-wrap{padding-left:4px!important;padding-right:4px!important}` +
-        `.chat-bubble{max-width:88%!important}` +
-        `}`
-      );
+      // ── Mobile responsive (widget is fullscreen <667px via SDK CSS) ─
+      rules.push([
+        '@media(max-width:667px){',
+        '  #app .emoji-dialog,#app div.emoji-dialog,div[role="dialog"].emoji-dialog{',
+        '    left:8px!important;right:8px!important;width:auto!important;max-width:none!important;bottom:52px!important;',
+        '  }',
+        '  .conversation-wrap .messages-list{padding:0 6px!important}',
+        '  .chat-bubble{max-width:85vw!important;word-break:break-word!important}',
+        '  .chat-bubble .message-content{font-size:14px!important}',
+        '  header .text-truncate{font-size:15px!important}',
+        '}',
+      ].join(''));
 
       if (rules.length) {
         const style = document.createElement('style');
@@ -428,7 +440,11 @@ export default {
       const patchEmojiPlaceholder = () => {
         const inputs = document.querySelectorAll('.emoji-dialog input[type="text"]');
         inputs.forEach(inp => {
-          if (inp.placeholder && inp.placeholder.includes('EMOJI_ICON_PICKER')) {
+          if (inp.placeholder && (
+            inp.placeholder.includes('EMOJI_ICON_PICKER') ||
+            inp.placeholder.includes('EMOJI.PLACEHOLDER') ||
+            inp.placeholder.includes('EMOJI_')
+          )) {
             inp.placeholder = 'Search emoji';
           }
         });
