@@ -55,12 +55,12 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 14px 9px;
+      padding: 6px 10px 5px;
       border-bottom: 0.5px solid var(--border-tertiary);
       flex-shrink: 0;
     }
     .popup-header .title {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
       letter-spacing: 0.07em;
       color: var(--text-secondary);
@@ -70,15 +70,15 @@
     .live-badge {
       display: none;
       align-items: center;
-      gap: 5px;
-      font-size: 11px;
+      gap: 4px;
+      font-size: 9px;
       font-weight: 600;
       color: #e8533a;
     }
     .live-badge.show { display: inline-flex; }
     .live-dot {
-      width: 7px;
-      height: 7px;
+      width: 5px;
+      height: 5px;
       border-radius: 50%;
       background: #e8533a;
       animation: pulse 1.4s ease-in-out infinite;
@@ -95,19 +95,19 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 12px 16px 8px;
+      padding: 8px 12px 6px;
       min-height: 0;
     }
 
     /* Avatar scales with available space using vmin */
     .avatar-wrap {
       position: relative;
-      width: min(38vmin, 120px);
-      height: min(38vmin, 120px);
+      width: min(32vmin, 90px);
+      height: min(32vmin, 90px);
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: min(3vmin, 14px);
+      margin-bottom: min(2vmin, 8px);
       flex-shrink: 0;
     }
     .avatar-ring {
@@ -146,10 +146,10 @@
     }
 
     .name {
-      font-size: clamp(12px, 4vmin, 16px);
+      font-size: clamp(11px, 3.5vmin, 14px);
       font-weight: 600;
       color: var(--text-primary);
-      margin-bottom: 2px;
+      margin-bottom: 1px;
       max-width: 90%;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -157,18 +157,18 @@
       text-align: center;
     }
     .role {
-      font-size: clamp(10px, 3vmin, 12px);
+      font-size: clamp(9px, 2.5vmin, 11px);
       color: var(--text-secondary);
-      margin-bottom: min(3vmin, 12px);
+      margin-bottom: min(2vmin, 8px);
     }
 
     .connected-badge {
       display: flex;
       align-items: center;
-      gap: 5px;
-      border-radius: 20px;
-      padding: 4px 12px;
-      font-size: clamp(9px, 2.8vmin, 11px);
+      gap: 4px;
+      border-radius: 16px;
+      padding: 3px 10px;
+      font-size: clamp(8px, 2.5vmin, 10px);
       font-weight: 500;
     }
     .connected-badge[data-state="connecting"] {
@@ -197,23 +197,23 @@
 
     /* ── Footer ── */
     .popup-footer {
-      padding: 0 14px 10px;
+      padding: 0 10px 6px;
       flex-shrink: 0;
     }
     .end-btn {
       width: 100%;
       background: #e8533a;
       border: none;
-      border-radius: 24px;
+      border-radius: 20px;
       color: #fff;
-      font-size: clamp(11px, 3.5vmin, 13px);
+      font-size: clamp(10px, 3vmin, 12px);
       font-weight: 600;
-      padding: clamp(8px, 2.5vmin, 11px) 0;
+      padding: clamp(6px, 2vmin, 9px) 0;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
       transition: background 0.15s;
     }
     .end-btn:hover:not(:disabled) { background: #c93f28; }
@@ -223,13 +223,13 @@
       color: #64748b;
       cursor: not-allowed;
     }
-    .end-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .end-btn svg { width: 11px; height: 11px; flex-shrink: 0; }
 
     /* ── Brand line — always visible ── */
     .brand {
-      padding: 0 14px 10px;
+      padding: 0 10px 6px;
       text-align: center;
-      font-size: clamp(9px, 2.5vmin, 10px);
+      font-size: clamp(8px, 2vmin, 9px);
       color: var(--text-secondary);
       font-weight: 500;
       flex-shrink: 0;
@@ -295,6 +295,7 @@
     // Read website_token from URL query param as early fallback
     const _urlParams = new URLSearchParams(window.location.search);
     const _urlWebsiteToken = _urlParams.get('wt') || '';
+    const _isMonitorMode = _urlParams.get('mode') === 'monitor';
 
     let cfg = null;
     let conversation = null;
@@ -307,6 +308,17 @@
 
     let _channel = null;
     try { _channel = new BroadcastChannel('cw-voice'); } catch (_) {}
+
+    // ── Auto-close when opener tab is closed ──────────────────────
+    let _openerCheckTimer = setInterval(() => {
+      if (window.opener && !window.opener.closed) return;
+      clearInterval(_openerCheckTimer);
+      if (isCallActive) {
+        endCall('Tab closed');
+      } else {
+        try { window.close(); } catch (_) {}
+      }
+    }, 1500);
 
     function setStatus(state, text) {
       $status.dataset.state = state;
@@ -413,7 +425,17 @@
         _configReceived = true;
         cfg = d.config;
         applyBranding(cfg);
-        startCall();
+        if (_isMonitorMode) {
+          startMonitorMode();
+        } else {
+          startCall();
+        }
+        return;
+      }
+      if (d.event === 'voice-state-update') {
+        if (d.speaking !== undefined) {
+          $body.classList.toggle('speaking', d.speaking);
+        }
         return;
       }
       if (d.event === 'request-end-call') {
@@ -426,8 +448,34 @@
       _channel.addEventListener('message', (e) => {
         const m = e.data || {};
         if (m.type === 'ping') writeHeartbeat();
-        else if (m.type === 'request-end-call') endCall('Call ended');
+        else if (m.type === 'request-end-call') {
+          if (!_isMonitorMode) endCall('Call ended');
+        }
+        else if (m.type === 'heartbeat' && _isMonitorMode) {
+          if (!isCallActive) {
+            isCallActive = true;
+            setStatus('connected', 'Connected');
+            $endCallBtn.disabled = false;
+            $liveBadge.classList.add('show');
+          }
+        }
+        else if (m.type === 'ended' && _isMonitorMode) {
+          handleCallEnded('Call ended');
+        }
+        else if (m.type === 'speaking' && _isMonitorMode) {
+          $body.classList.toggle('speaking', !!m.value);
+        }
       });
+    }
+
+    // ── Monitor mode: sync with inline call, don't start own call ──
+    function startMonitorMode() {
+      isCallActive = true;
+      setStatus('connected', 'Connected');
+      $endCallBtn.disabled = false;
+      $liveBadge.classList.add('show');
+      writeHeartbeat();
+      _heartbeatTimer = setInterval(writeHeartbeat, 1500);
     }
 
     async function startCall() {
@@ -439,6 +487,15 @@
       writeHeartbeat();
       _heartbeatTimer = setInterval(writeHeartbeat, 1500);
 
+      if (cfg.provider === 'dograh') {
+        await startDograhCall();
+      } else {
+        await startElevenLabsCall();
+      }
+    }
+
+    // ── ElevenLabs call ──────────────────────────────────────────────
+    async function startElevenLabsCall() {
       try {
         setStatus('connecting', 'Requesting mic…');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -453,8 +510,6 @@
         conversation = await Conversation.startSession({
           signedUrl: cfg.signedUrl,
 
-          // Chatwoot context → ElevenLabs agent as dynamic variables.
-          // Use in agent prompt: {{chatwoot_conversation_id}}, {{chatwoot_conversation_url}} etc.
           dynamicVariables: {
             chatwoot_conversation_id:  cfg.cwConversationId  || '',
             chatwoot_conversation_url: cfg.cwConversationUrl || '',
@@ -468,7 +523,6 @@
             setStatus('connected', 'Connected');
             $endCallBtn.disabled = false;
 
-            // Capture ElevenLabs conversation ID and save to Chatwoot
             try {
               const elConvId = typeof conversation.getId === 'function'
                 ? conversation.getId()
@@ -510,7 +564,7 @@
         });
       } catch (error) {
         const msg = (error && error.message) || 'unknown';
-        console.error('[VOICE-POPUP] startCall failed:', msg);
+        console.error('[VOICE-POPUP] startElevenLabsCall failed:', msg);
         setStatus('error',
           (error && (error.name === 'NotAllowedError' || error.name === 'NotFoundError'))
             ? 'Mic denied'
@@ -520,7 +574,179 @@
       }
     }
 
+    // ── Dograh call (WebRTC + WebSocket signaling) ───────────────────
+    let _dograhWs = null;
+    let _dograhPc = null;
+    let _dograhStream = null;
+    let _dograhRemoteAudio = null;
+
+    async function startDograhCall() {
+      try {
+        setStatus('connecting', 'Requesting mic…');
+
+        const signedUrl = cfg.dograhSignedUrl || cfg.signedUrl;
+        const sessionToken = cfg.dograhSessionToken;
+        const workflowRunId = cfg.dograhWorkflowRunId;
+        const apiUrl = cfg.dograhApiUrl;
+
+        if (!signedUrl || !sessionToken) {
+          throw new Error('Missing Dograh signed_url or session_token');
+        }
+
+        // Fetch TURN credentials
+        let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+        try {
+          const turnResp = await fetch(`${apiUrl}/api/v1/public/embed/turn-credentials/${sessionToken}`);
+          if (turnResp.ok) {
+            const turnData = await turnResp.json();
+            if (turnData?.ice_servers?.length) iceServers = turnData.ice_servers;
+          }
+        } catch (e) { console.warn('[VOICE-POPUP] TURN fetch failed:', e?.message); }
+
+        setStatus('connecting', 'Connecting…');
+
+        // Create RTCPeerConnection
+        const pc = new RTCPeerConnection({ iceServers });
+        _dograhPc = pc;
+        const pcId = 'cw_' + Math.random().toString(36).slice(2, 10);
+
+        // Get mic and add tracks
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true }
+        });
+        _dograhStream = audioStream;
+        audioStream.getTracks().forEach(track => pc.addTrack(track, audioStream));
+
+        // Remote audio playback
+        const remoteAudio = new Audio();
+        remoteAudio.autoplay = true;
+        _dograhRemoteAudio = remoteAudio;
+
+        pc.ontrack = (event) => {
+          remoteAudio.srcObject = event.streams[0] || new MediaStream([event.track]);
+        };
+
+        // WebSocket signaling
+        const ws = new WebSocket(signedUrl);
+        _dograhWs = ws;
+
+        const pendingCandidates = [];
+        pc.onicecandidate = (event) => {
+          if (!event.candidate) return;
+          const msg = { type: 'ice-candidate', payload: event.candidate };
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+          else pendingCandidates.push(msg);
+        };
+
+        ws.onopen = async () => {
+          pendingCandidates.forEach(msg => ws.send(JSON.stringify(msg)));
+          pendingCandidates.length = 0;
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          ws.send(JSON.stringify({
+            type: 'offer',
+            payload: {
+              sdp: pc.localDescription.sdp,
+              type: 'offer',
+              pc_id: pcId,
+              workflow_id: null,
+              workflow_run_id: workflowRunId,
+              call_context_vars: {},
+            },
+          }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'answer' && msg.payload) {
+              pc.setRemoteDescription(new RTCSessionDescription({
+                type: 'answer', sdp: msg.payload.sdp,
+              }));
+              isCallActive = true;
+              _callConnectedAt = Date.now();
+              setStatus('connected', 'Connected');
+              $endCallBtn.disabled = false;
+              writeHeartbeat();
+              startBackendHeartbeat();
+              postToOpener('voice-popup-connected');
+            }
+
+            if (msg.type === 'ice-candidate' && msg.payload) {
+              pc.addIceCandidate(new RTCIceCandidate(msg.payload)).catch(() => {});
+            }
+
+            // Transcripts → Chatwoot (Dograh uses payload.text)
+            if (msg.type === 'USER_TRANSCRIPTION' || msg.type === 'BOT_TEXT' ||
+                msg.type === 'rtf-user-transcription' || msg.type === 'rtf-bot-text') {
+              const source = (msg.type === 'USER_TRANSCRIPTION' || msg.type === 'rtf-user-transcription') ? 'user' : 'ai';
+              const text = (msg.payload?.text || msg.text || msg.content || '').trim();
+              if (text) {
+                apiPost('/api/v1/widget/conversations/voice_transcript', {
+                  source, content: text,
+                }).catch(e => console.warn('Transcript save failed:', e?.message));
+                postToOpener('voice-popup-transcript', { source, message: text });
+              }
+            }
+
+            if (msg.type === 'BOT_TEXT' || msg.type === 'rtf-bot-text') {
+              $body.classList.add('speaking');
+            }
+            if (msg.type === 'rtf-bot-stopped-speaking' || msg.type === 'BOT_STOPPED_SPEAKING') {
+              $body.classList.remove('speaking');
+            }
+
+            if (msg.type === 'error') {
+              console.error('[VOICE-POPUP] Dograh error:', msg);
+              handleCallEnded('Error');
+            }
+          } catch (_) {}
+        };
+
+        ws.onclose = () => {
+          if (isCallActive) handleCallEnded('Call ended');
+        };
+
+        ws.onerror = (err) => {
+          console.error('[VOICE-POPUP] Dograh WS error:', err);
+          setStatus('error', 'Connection failed');
+          $endCallBtn.disabled = true;
+          postToOpener('voice-popup-error', { error: 'WebSocket failed' });
+        };
+
+      } catch (error) {
+        const msg = (error && error.message) || 'unknown';
+        console.error('[VOICE-POPUP] startDograhCall failed:', msg);
+        setStatus('error',
+          (error && (error.name === 'NotAllowedError' || error.name === 'NotFoundError'))
+            ? 'Mic denied' : 'Failed');
+        $endCallBtn.disabled = true;
+        postToOpener('voice-popup-error', { error: msg });
+      }
+    }
+
+    function cleanupDograh() {
+      try { _dograhStream?.getTracks().forEach(t => t.stop()); } catch (_) {}
+      try { _dograhPc?.close(); } catch (_) {}
+      try { _dograhWs?.close(); } catch (_) {}
+      if (_dograhRemoteAudio) { try { _dograhRemoteAudio.srcObject = null; } catch (_) {} }
+      _dograhStream = null;
+      _dograhPc = null;
+      _dograhWs = null;
+      _dograhRemoteAudio = null;
+    }
+
     async function endCall(reason) {
+      // Dograh path
+      if (_dograhWs || _dograhPc) {
+        cleanupDograh();
+        handleCallEnded(reason || 'Call ended');
+        return;
+      }
+      // ElevenLabs path
       if (!conversation) { handleCallEnded(reason || 'Call ended'); return; }
       $endCallBtn.disabled = true;
       setStatus('connecting', 'Ending…');
@@ -536,22 +762,38 @@
       conversation = null;
       if (!endedNotified) {
         endedNotified = true;
-        apiPost('/api/v1/widget/conversations/voice_call_ended', {}).catch(() => {});
+        if (!_isMonitorMode) {
+          apiPost('/api/v1/widget/conversations/voice_call_ended', {}).catch(() => {});
+        }
         postToOpener('voice-popup-ended');
       }
       if (_heartbeatTimer) clearInterval(_heartbeatTimer);
       clearHeartbeat();
-      stopBackendHeartbeat();
+      if (!_isMonitorMode) stopBackendHeartbeat();
       setTimeout(() => { try { window.close(); } catch (_) {} }, 1200);
     }
 
-    // End Call button → call endCall(); same flow as remote-end via request-end-call
-    $endCallBtn.addEventListener('click', () => endCall('Call ended'));
+    $endCallBtn.addEventListener('click', () => {
+      if (_isMonitorMode) {
+        // In monitor mode, tell the inline call to end via BroadcastChannel
+        if (_channel) {
+          try { _channel.postMessage({ type: 'request-end-call' }); } catch (_) {}
+        }
+        postToOpener('voice-popup-end-request');
+        $endCallBtn.disabled = true;
+        setStatus('connecting', 'Ending…');
+        // If inline call doesn't respond within 3s, close anyway
+        setTimeout(() => { if (isCallActive) handleCallEnded('Call ended'); }, 3000);
+      } else {
+        endCall('Call ended');
+      }
+    });
 
     window.addEventListener('beforeunload', () => {
       if (_heartbeatTimer) clearInterval(_heartbeatTimer);
       clearHeartbeat();
       stopBackendHeartbeat();
+      if (_dograhWs || _dograhPc) { cleanupDograh(); }
       if (conversation && isCallActive) {
         try { conversation.endSession(); } catch (_) {}
       }
@@ -577,7 +819,13 @@
     }, 500);
     setTimeout(() => {
       if (!_configReceived) {
-        setStatus('error', 'No config');
+        if (_isMonitorMode) {
+          // Monitor mode can work without config from opener — use defaults
+          _configReceived = true;
+          startMonitorMode();
+        } else {
+          setStatus('error', 'No config');
+        }
       }
     }, 6000);
 

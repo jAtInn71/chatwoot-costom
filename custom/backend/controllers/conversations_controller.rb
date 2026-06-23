@@ -146,7 +146,14 @@ class Api::V1::Widget::ConversationsController < Api::V1::Widget::BaseController
     provider = (@web_widget.voice_agent_provider || 'elevenlabs').strip.downcase
     api_key = @web_widget.voice_agent_api_key.to_s.strip
     agent_id = @web_widget.elevenlabs_agent_id.to_s.strip
-    config_data = @web_widget.voice_agent_config_data || {}
+    raw_config = @web_widget.voice_agent_config_data
+    config_data = if raw_config.is_a?(String)
+                    begin; JSON.parse(raw_config); rescue; {}; end
+                  elsif raw_config.is_a?(Hash)
+                    raw_config
+                  else
+                    {}
+                  end
 
     # Route to provider-specific handler
     return voice_signed_url_dograh(api_key, config_data) if provider == 'dograh'
@@ -756,21 +763,47 @@ class Api::V1::Widget::ConversationsController < Api::V1::Widget::BaseController
                          @inbox.name
     brand_display_name = @inbox.account.name.presence || @inbox.name
 
-    # Dograh uses WebRTC with WebSocket signaling.
-    # The widget connects to the Dograh server directly.
+    # Call Dograh's embed init API to get a session token + workflow_run_id.
+    # POST /api/v1/public/embed/init  { token: "emb_..." }
+    # Then build the signaling WebSocket URL: wss://{host}/api/v1/ws/public/signaling/{session_token}
+    base = server_url.chomp('/')
+    dograh_uri = URI.parse("#{base}/api/v1/public/embed/init")
+    http = Net::HTTP.new(dograh_uri.host, dograh_uri.port)
+    http.use_ssl = (dograh_uri.scheme == 'https')
+    http.open_timeout = 8
+    http.read_timeout = 10
+
+    req = Net::HTTP::Post.new(dograh_uri.path, {
+      'Content-Type' => 'application/json'
+    })
+    req.body = { token: workflow_id }.to_json
+
+    resp = http.request(req)
+    unless resp.is_a?(Net::HTTPSuccess)
+      Rails.logger.error "[VOICE-AGENT] Dograh embed/init failed: #{resp.code} #{resp.body}"
+      return render json: { error: "Dograh API returned #{resp.code}" }, status: :bad_gateway
+    end
+
+    dograh_data = JSON.parse(resp.body)
+    session_token = dograh_data['session_token']
+
+    # Build the public signaling WebSocket URL
     ws_base = server_url.sub(%r{^https?://}, 'wss://').chomp('/')
+    signed_url = "#{ws_base}/api/v1/ws/public/signaling/#{session_token}"
 
     render json: {
-      provider:        'dograh',
-      signed_url:      "#{ws_base}/ws/rtc",
-      server_url:      server_url,
-      workflow_id:     workflow_id,
-      api_key:         api_key.present? ? api_key : nil,
-      conversation_id: conv.id,
-      account_id:      acct_id,
-      agent_name:      agent_display_name,
-      brand_name:      brand_display_name,
-      avatar_url:      first_agent&.avatar_url
+      provider:            'dograh',
+      signed_url:          signed_url,
+      session_token:       session_token,
+      workflow_run_id:     dograh_data['workflow_run_id'],
+      voice_agent_api_url: base,
+      server_url:          server_url,
+      workflow_id:         workflow_id,
+      conversation_id:     conv.id,
+      account_id:          acct_id,
+      agent_name:          agent_display_name,
+      brand_name:          brand_display_name,
+      avatar_url:          first_agent&.avatar_url
     }
   rescue StandardError => e
     Rails.logger.error "[VOICE-AGENT] Dograh signed-url exception: #{e.class} #{e.message}"
