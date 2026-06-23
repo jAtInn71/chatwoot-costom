@@ -17,7 +17,7 @@ export default {
     ChatAttachmentButton,
     ChatSendButton,
     ElevenLabsVoiceButton,
-    EmojiInput,
+    EmojiPicker,
     FluentIcon,
     ResizableTextArea,
   },
