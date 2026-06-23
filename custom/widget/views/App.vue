@@ -375,12 +375,66 @@ export default {
         `.unread-notification{background:transparent!important;box-shadow:none!important;border:none!important}`
       );
 
+      // ── Emoji picker: constrain within widget ──────────────────────
+      rules.push(
+        `.emoji-dialog{` +
+        `position:fixed!important;` +
+        `bottom:60px!important;` +
+        `top:auto!important;` +
+        `right:8px!important;` +
+        `left:8px!important;` +
+        `width:auto!important;` +
+        `max-width:320px!important;` +
+        `max-height:calc(100vh - 140px)!important;` +
+        `z-index:9999!important;` +
+        `border-radius:12px!important;` +
+        `overflow:hidden!important;` +
+        `}`
+      );
+      rules.push(`.emoji-dialog .emoji-item{max-height:calc(100vh - 260px)!important}`);
+      rules.push(`.emoji-dialog::before{display:none!important}`);
+
+      // ── Auto-contrast: branding / footer ───────────────────────────
+      if (ch.widgetBgColor) {
+        const bgHex2 = extractHex(ch.widgetBgColor);
+        if (bgHex2) {
+          const lum2 = hexToLuminance(bgHex2);
+          const isDark2 = lum2 < 0.4;
+          const brandColor = isDark2 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)';
+          const brandStrong = isDark2 ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
+          rules.push(`.branding--text{color:${brandColor}!important}`);
+          rules.push(`.branding--text a,.branding--text strong{color:${brandStrong}!important}`);
+          rules.push(`.text-n-slate-11{color:${brandColor}!important}`);
+        }
+      }
+
+      // ── Mobile responsive ──────────────────────────────────────────
+      rules.push(
+        `@media(max-width:400px){` +
+        `.emoji-dialog{left:4px!important;right:4px!important;max-width:none!important;bottom:56px!important}` +
+        `.conversation-wrap{padding-left:4px!important;padding-right:4px!important}` +
+        `.chat-bubble{max-width:88%!important}` +
+        `}`
+      );
+
       if (rules.length) {
         const style = document.createElement('style');
         style.id = 'cw-custom-appearance';
         style.textContent = rules.join('\n');
         document.head.appendChild(style);
       }
+
+      // ── Patch raw i18n keys in emoji picker placeholder ────────────
+      const patchEmojiPlaceholder = () => {
+        const inputs = document.querySelectorAll('.emoji-dialog input[type="text"]');
+        inputs.forEach(inp => {
+          if (inp.placeholder && inp.placeholder.includes('EMOJI_ICON_PICKER')) {
+            inp.placeholder = 'Search emoji';
+          }
+        });
+      };
+      const observer = new MutationObserver(patchEmojiPlaceholder);
+      observer.observe(document.body, { childList: true, subtree: true });
     },
 
     setWidgetColorVariable(widgetColor) {
