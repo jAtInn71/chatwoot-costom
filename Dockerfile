@@ -61,6 +61,8 @@ COPY custom/dashboard/widget-preview/WidgetFooter.vue app/javascript/dashboard/r
 COPY custom/dashboard/ResolveAction.vue app/javascript/dashboard/components/buttons/ResolveAction.vue
 COPY custom/dashboard/ColorPicker.vue app/javascript/dashboard/components-next/colorpicker/ColorPicker.vue
 COPY custom/widget/components/Availability/AvailabilityContainer.vue app/javascript/widget/components/Availability/AvailabilityContainer.vue
+COPY custom/widget/components/emoji/EmojiPicker.vue app/javascript/shared/components/emoji/EmojiPicker.vue
+COPY custom/widget/components/emoji/pickerHelper.js app/javascript/shared/components/emoji/pickerHelper.js
 COPY custom/sdk/IFrameHelper.js app/javascript/sdk/IFrameHelper.js
 
 # Voice agent (ElevenLabs / Dograh / etc.) configuration is now done per

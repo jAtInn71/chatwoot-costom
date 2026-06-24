@@ -104,7 +104,13 @@
   "EMOJI": {
     "PLACEHOLDER": "Search emojis",
     "NOT_FOUND": "No emoji match your search",
-    "ARIA_LABEL": "Emoji picker"
+    "ARIA_LABEL": "Emoji picker",
+    "REMOVE": "Remove"
+  },
+  "EMOJI_ICON_PICKER": {
+    "SEARCH_EMOJI": "Search emoji",
+    "FREQUENTLY_USED": "Frequently Used",
+    "NO_EMOJI": "No emoji found"
   },
   "CSAT": {
     "TITLE": "Rate your conversation",
