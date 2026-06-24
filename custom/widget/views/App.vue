@@ -229,7 +229,7 @@ export default {
       rules.push(`:root{--color-n-brand:${solidWidgetColor}!important}`);
 
       // Kill the upstream shadow-sm on ChatInputWrap root — only .input-row should have a border
-      rules.push(`#app .chat-input-container{box-shadow:none!important}`);
+      rules.push(`#app .chat-input-container,#app footer>.chat-input-container.shadow-sm{box-shadow:none!important;border:none!important}`);
 
       // Widget body background (solid or gradient)
       if (ch.widgetBgColor) {
@@ -275,18 +275,15 @@ export default {
             `#app .chat-input-container .bg-n-background` +
             `{background:${inputBg}!important}`
           );
-          // Kill Tailwind's !shadow utility — must use same specificity trick
+          // Border only on .input-row (rounded), never on .chat-input-container (square)
           rules.push(
-            `#app footer [class*="shadow-"],` +
-            `#app .chat-input-container [class*="shadow-"],` +
             `#app .chat-input-container .input-row` +
             `{--tw-shadow:0 0 0 1px ${inputBorder}!important;` +
             `--tw-shadow-colored:0 0 0 1px ${inputBorder}!important;` +
             `box-shadow:0 0 0 1px ${inputBorder}!important}`
           );
           rules.push(
-            `#app .chat-input-container .input-row:focus-within,` +
-            `#app footer [class*="shadow-"]:focus-within` +
+            `#app .chat-input-container .input-row:focus-within` +
             `{box-shadow:0 0 0 1px ${solidWidgetColor},0 0 2px 3px ${solidWidgetColor}33!important}`
           );
           // Input text color
