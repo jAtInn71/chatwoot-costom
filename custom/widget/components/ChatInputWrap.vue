@@ -315,6 +315,7 @@ export default {
 .chat-input-container {
   display: flex;
   flex-direction: column;
+  box-shadow: none !important;
 }
 
 .staged-file-preview {

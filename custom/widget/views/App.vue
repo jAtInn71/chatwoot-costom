@@ -228,6 +228,9 @@ export default {
       // Override Chatwoot's --color-n-brand so focus rings use widget color
       rules.push(`:root{--color-n-brand:${solidWidgetColor}!important}`);
 
+      // Kill the upstream shadow-sm on ChatInputWrap root — only .input-row should have a border
+      rules.push(`#app .chat-input-container{box-shadow:none!important}`);
+
       // Widget body background (solid or gradient)
       if (ch.widgetBgColor) {
         const bg = ch.widgetBgColor.trim();
