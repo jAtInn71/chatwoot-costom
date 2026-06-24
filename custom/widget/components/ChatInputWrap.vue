@@ -118,6 +118,9 @@ export default {
     emojiOnClick(emoji) {
       this.userInput = `${this.userInput}${emoji} `;
     },
+    emojiOnSelect({ emoji }) {
+      this.userInput = `${this.userInput}${emoji} `;
+    },
     onTypingOff() {
       this.toggleTyping('off');
     },
@@ -208,10 +211,10 @@ export default {
           }"
         />
       </button>
-      <EmojiInput
+      <EmojiPicker
         v-if="shouldShowEmojiPicker && showEmojiPicker"
         v-on-clickaway="hideEmojiPicker"
-        :on-click="emojiOnClick"
+        @select="emojiOnSelect"
         @keydown.esc="hideEmojiPicker"
       />
       <ElevenLabsVoiceButton
@@ -229,7 +232,7 @@ export default {
 
 <style scoped lang="scss">
 .emoji-dialog {
-  @apply max-w-full ltr:right-5 rtl:right-[unset] rtl:left-5 -top-[302px] before:ltr:right-2.5 before:rtl:right-[unset] before:rtl:left-2.5;
+  @apply max-w-full;
 }
 
 .user-message-input {

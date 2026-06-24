@@ -376,11 +376,9 @@ export default {
       );
 
       // ── Emoji picker: constrain within widget iframe ────────────────
-      // Override Tailwind utility classes (w-80, absolute, -top-[302px]) with
-      // high-specificity selectors so the picker stays inside the iframe bounds.
       rules.push([
         '#app .emoji-dialog,',
-        '#app div.emoji-dialog,',
+        '#app div[role="dialog"].emoji-dialog,',
         'div[role="dialog"].emoji-dialog{',
         '  position:fixed!important;',
         '  bottom:56px!important;',
@@ -388,8 +386,7 @@ export default {
         '  right:12px!important;',
         '  left:auto!important;',
         '  width:calc(100vw - 24px)!important;',
-        '  max-width:320px!important;',
-        '  height:300px!important;',
+        '  max-width:340px!important;',
         '  max-height:calc(100vh - 120px)!important;',
         '  z-index:9999!important;',
         '  border-radius:12px!important;',
@@ -397,8 +394,6 @@ export default {
         '  box-shadow:0 -4px 20px rgba(0,0,0,0.15)!important;',
         '}',
       ].join(''));
-      rules.push('#app .emoji-dialog::before{display:none!important}');
-      rules.push('#app .emoji-dialog .emoji-item{height:200px!important;max-height:200px!important;overflow-y:auto!important}');
       rules.push('#app .emoji-dialog input[type="text"]{font-size:14px!important}');
 
       // ── Auto-contrast: branding / footer ───────────────────────────
