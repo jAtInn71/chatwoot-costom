@@ -29,5 +29,10 @@ do
   sleep 2;
 done
 
+# Run pending database migrations (idempotent — safe to run on every startup)
+echo "Running database migrations..."
+bundle exec rails db:migrate
+echo "Migrations complete."
+
 # Execute the main process of the container
 exec "$@"

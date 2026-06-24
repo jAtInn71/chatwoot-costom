@@ -191,6 +191,8 @@ COPY custom/backend/migrations/20260618000001_add_available_message_to_channel_w
      /app/db/migrate/20260618000001_add_available_message_to_channel_web_widgets.rb
 COPY custom/backend/migrations/20260619000001_add_reply_time_text_to_channel_web_widgets.rb \
      /app/db/migrate/20260619000001_add_reply_time_text_to_channel_web_widgets.rb
+COPY custom/backend/migrations/20260624000001_add_header_colors_to_channel_web_widgets.rb \
+     /app/db/migrate/20260624000001_add_header_colors_to_channel_web_widgets.rb
 
 # ── Frontend: Dashboard & Widget files processed by Vite in Stage 1 ────────────
 # All Vue components, store modules, and helpers are bundled by Vite in Stage 1
