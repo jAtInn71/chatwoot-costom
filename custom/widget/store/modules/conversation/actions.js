@@ -101,7 +101,7 @@ export const actions = {
 
   sendAttachment: async ({ commit, state: conversationState }, params) => {
     const {
-      attachment: { thumbUrl, fileType },
+      attachment: { thumbUrl, fileType, content },
       meta = {},
     } = params;
     const attachment = {
@@ -112,6 +112,7 @@ export const actions = {
     };
     const tempMessage = createTemporaryMessage({
       attachments: [attachment],
+      content: content || '',
       replyTo: params.replyTo,
     });
     const { pendingCustomAttributes, pendingLabels } = conversationState;

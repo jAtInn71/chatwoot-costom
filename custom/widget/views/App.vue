@@ -236,7 +236,7 @@ export default {
           `.dark .bg-n-solid-1{background:${bg}!important}`
         );
 
-        // Auto-contrast: adjust date separator & agent name based on bg luminance
+        // Auto-contrast: adjust UI elements based on bg luminance
         const bgHex = extractHex(bg);
         if (bgHex) {
           const lum = hexToLuminance(bgHex);
@@ -245,17 +245,52 @@ export default {
           const lineColor = isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)';
           const strongText = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.7)';
 
-          // Date separator text ("Today", "Yesterday") — DateSeparator uses text-n-slate-11
+          // Date separator text ("Today", "Yesterday")
           rules.push(`.conversation-wrap .messages-wrap > .text-n-slate-11{color:${textColor}!important}`);
-          // Date separator lines (::before / ::after pseudo-elements use bg-n-slate-4)
           rules.push(
             `.conversation-wrap .messages-wrap > .text-n-slate-11::before,` +
             `.conversation-wrap .messages-wrap > .text-n-slate-11::after` +
             `{background-color:${lineColor}!important}`
           );
 
-          // Agent name label below chat bubbles
-          rules.push(`.agent-name{color:${textColor}!important}`);
+          // Agent name: use widget color (brand) with fallback to contrast text
+          const agentNameColor = solidWidgetColor || (isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.6)');
+          rules.push(`.agent-name{color:${agentNameColor}!important;font-weight:500!important}`);
+
+          // ── Input container: blend with widget background ──────────
+          const inputBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
+          const inputBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+          const inputText = isDark ? '#f1f5f9' : '#1e293b';
+          const inputPlaceholder = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)';
+          const inputIconColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
+          // Input row container
+          rules.push(
+            `.chat-input-container .input-row,.chat-input-container .input-row.bg-n-background` +
+            `{background:${inputBg}!important}`
+          );
+          // Shadow borders on input row
+          rules.push(
+            `.chat-input-container .input-row` +
+            `{--tw-shadow-color:${inputBorder}!important;box-shadow:0 0 0 1px ${inputBorder},0 0 2px 3px transparent!important}`
+          );
+          rules.push(
+            `.chat-input-container .input-row:focus-within` +
+            `{box-shadow:0 0 0 1px ${solidWidgetColor},0 0 2px 3px ${solidWidgetColor}33!important}`
+          );
+          // Input text & placeholder
+          rules.push(`.user-message-input,.user-message-input.reset-base{color:${inputText}!important}`);
+          rules.push(`.user-message-input::placeholder{color:${inputPlaceholder}!important}`);
+          // Icons inside input bar (attach, emoji, voice)
+          rules.push(`.chat-input-container .text-n-slate-12{color:${inputIconColor}!important}`);
+          // Staged file preview bar
+          rules.push(
+            `.staged-file-preview{background:${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'}!important;` +
+            `border-color:${inputBorder}!important}`
+          );
+          rules.push(`.staged-file-name{color:${inputText}!important}`);
+          // Branding footer text
+          rules.push(`.branding--text{color:${textColor}!important}`);
+          rules.push(`.branding--text a,.branding--text strong{color:${strongText}!important}`);
 
           // Auto-contrast scrollbar: thin, blends with widget bg
           const thumbColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
@@ -447,21 +482,6 @@ export default {
       rules.push(
         '#app .emoji-dialog{position:fixed!important;bottom:56px!important;top:auto!important;z-index:9999!important}'
       );
-
-      // ── Auto-contrast: branding / footer ───────────────────────────
-      if (ch.widgetBgColor) {
-        const bgHex2 = extractHex(ch.widgetBgColor);
-        if (bgHex2) {
-          const lum2 = hexToLuminance(bgHex2);
-          const isDark2 = lum2 < 0.4;
-          const brandColor = isDark2 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)';
-          const brandStrong = isDark2 ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
-          rules.push(`.branding--text{color:${brandColor}!important}`);
-          rules.push(`.branding--text a,.branding--text strong{color:${brandStrong}!important}`);
-          // Only scope to conversation area — not emoji/header/footer
-          rules.push(`.conversation-wrap .text-n-slate-11{color:${brandColor}!important}`);
-        }
-      }
 
       // ── Mobile responsive (widget is fullscreen <667px via SDK CSS) ─
       rules.push([
