@@ -375,26 +375,10 @@ export default {
         `.unread-notification{background:transparent!important;box-shadow:none!important;border:none!important}`
       );
 
-      // ── Emoji picker: constrain within widget iframe ────────────────
-      rules.push([
-        '#app .emoji-dialog,',
-        '#app div[role="dialog"].emoji-dialog,',
-        'div[role="dialog"].emoji-dialog{',
-        '  position:fixed!important;',
-        '  bottom:56px!important;',
-        '  top:auto!important;',
-        '  right:12px!important;',
-        '  left:auto!important;',
-        '  width:calc(100vw - 24px)!important;',
-        '  max-width:340px!important;',
-        '  max-height:calc(100vh - 120px)!important;',
-        '  z-index:9999!important;',
-        '  border-radius:12px!important;',
-        '  overflow:hidden!important;',
-        '  box-shadow:0 -4px 20px rgba(0,0,0,0.15)!important;',
-        '}',
-      ].join(''));
-      rules.push('#app .emoji-dialog input[type="text"]{font-size:14px!important}');
+      // ── Emoji picker: ensure it floats above input (backup for scoped styles) ─
+      rules.push(
+        '#app .emoji-dialog{position:fixed!important;bottom:56px!important;top:auto!important;z-index:9999!important}'
+      );
 
       // ── Auto-contrast: branding / footer ───────────────────────────
       if (ch.widgetBgColor) {
