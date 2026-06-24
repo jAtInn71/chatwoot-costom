@@ -216,11 +216,14 @@ export default {
 
     <!-- Input row -->
     <div
-      class="input-row items-center flex ltr:pl-3 rtl:pr-3 ltr:pr-2 rtl:pl-2 rounded-[7px] transition-all duration-200 bg-n-background !shadow-[0_0_0_1px,0_0_2px_3px]"
+      class="input-row items-center flex ltr:pl-3 rtl:pr-3 ltr:pr-2 rtl:pl-2 rounded-[7px] transition-all duration-200 bg-n-background"
       :class="{
-        '!shadow-n-brand dark:!shadow-n-brand': isFocused,
-        '!shadow-n-strong dark:!shadow-n-strong': !isFocused,
         'rounded-t-none': stagedFile,
+      }"
+      :style="{
+        boxShadow: isFocused
+          ? `0 0 0 1px var(--widget-color, #1f93ff), 0 0 2px 3px color-mix(in srgb, var(--widget-color, #1f93ff) 20%, transparent)`
+          : `0 0 0 1px var(--n-strong, rgba(0,0,0,0.12))`,
       }"
       @keydown.esc="hideEmojiPicker"
     >

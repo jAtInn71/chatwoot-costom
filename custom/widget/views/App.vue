@@ -258,39 +258,61 @@ export default {
           rules.push(`.agent-name{color:${agentNameColor}!important;font-weight:500!important}`);
 
           // ── Input container: blend with widget background ──────────
-          const inputBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
-          const inputBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+          const inputBg = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.7)';
+          const inputBorder = isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)';
           const inputText = isDark ? '#f1f5f9' : '#1e293b';
           const inputPlaceholder = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)';
-          const inputIconColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.5)';
-          // Input row container
+          const inputIconColor = isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.5)';
+          // Override bg-n-background CSS variable globally so all .bg-n-background elements adapt
+          rules.push(`:root{--n-background:${inputBg}}`);
+          // Force bg on input bar — #app prefix beats Tailwind specificity
           rules.push(
-            `.chat-input-container .input-row,.chat-input-container .input-row.bg-n-background` +
+            `#app footer .bg-n-background,` +
+            `#app .chat-input-container .input-row,` +
+            `#app .chat-input-container .bg-n-background` +
             `{background:${inputBg}!important}`
           );
-          // Shadow borders on input row
+          // Kill Tailwind's !shadow utility — must use same specificity trick
           rules.push(
-            `.chat-input-container .input-row` +
-            `{--tw-shadow-color:${inputBorder}!important;box-shadow:0 0 0 1px ${inputBorder},0 0 2px 3px transparent!important}`
+            `#app footer [class*="shadow-"],` +
+            `#app .chat-input-container [class*="shadow-"],` +
+            `#app .chat-input-container .input-row` +
+            `{--tw-shadow:0 0 0 1px ${inputBorder}!important;` +
+            `--tw-shadow-colored:0 0 0 1px ${inputBorder}!important;` +
+            `box-shadow:0 0 0 1px ${inputBorder}!important}`
           );
           rules.push(
-            `.chat-input-container .input-row:focus-within` +
+            `#app .chat-input-container .input-row:focus-within,` +
+            `#app footer [class*="shadow-"]:focus-within` +
             `{box-shadow:0 0 0 1px ${solidWidgetColor},0 0 2px 3px ${solidWidgetColor}33!important}`
           );
-          // Input text & placeholder
-          rules.push(`.user-message-input,.user-message-input.reset-base{color:${inputText}!important}`);
-          rules.push(`.user-message-input::placeholder{color:${inputPlaceholder}!important}`);
-          // Icons inside input bar (attach, emoji, voice)
-          rules.push(`.chat-input-container .text-n-slate-12{color:${inputIconColor}!important}`);
+          // Input text color
+          rules.push(
+            `#app .user-message-input,` +
+            `#app textarea.user-message-input,` +
+            `#app #chat-input` +
+            `{color:${inputText}!important}`
+          );
+          rules.push(
+            `#app .user-message-input::placeholder,` +
+            `#app #chat-input::placeholder` +
+            `{color:${inputPlaceholder}!important;-webkit-text-fill-color:${inputPlaceholder}!important}`
+          );
+          // Icons (attach, emoji, voice, send)
+          rules.push(
+            `#app footer .text-n-slate-12,` +
+            `#app .chat-input-container .text-n-slate-12` +
+            `{color:${inputIconColor}!important}`
+          );
           // Staged file preview bar
           rules.push(
-            `.staged-file-preview{background:${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'}!important;` +
+            `#app .staged-file-preview{background:${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.5)'}!important;` +
             `border-color:${inputBorder}!important}`
           );
-          rules.push(`.staged-file-name{color:${inputText}!important}`);
-          // Branding footer text
-          rules.push(`.branding--text{color:${textColor}!important}`);
-          rules.push(`.branding--text a,.branding--text strong{color:${strongText}!important}`);
+          rules.push(`#app .staged-file-name{color:${inputText}!important}`);
+          // Branding / footer text
+          rules.push(`#app .branding--text{color:${textColor}!important}`);
+          rules.push(`#app .branding--text a,#app .branding--text strong{color:${strongText}!important}`);
 
           // Auto-contrast scrollbar: thin, blends with widget bg
           const thumbColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
