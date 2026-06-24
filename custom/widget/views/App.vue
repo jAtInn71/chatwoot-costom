@@ -256,7 +256,75 @@ export default {
 
           // Agent name label below chat bubbles
           rules.push(`.agent-name{color:${textColor}!important}`);
+
+          // Auto-contrast scrollbar: thin, blends with widget bg
+          const thumbColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)';
+          const thumbHover = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)';
+          // Firefox
+          rules.push(
+            `.overflow-auto,.overflow-y-auto,` +
+            `.conversation-wrap,.messages-list,.flex.flex-1.overflow-auto{` +
+            `scrollbar-width:thin!important;` +
+            `scrollbar-color:${thumbColor} transparent!important}`
+          );
+          // WebKit (Chrome, Safari, Edge)
+          rules.push(
+            `.overflow-auto::-webkit-scrollbar,` +
+            `.overflow-y-auto::-webkit-scrollbar,` +
+            `.conversation-wrap::-webkit-scrollbar,` +
+            `.flex.flex-1.overflow-auto::-webkit-scrollbar` +
+            `{width:4px!important;background:transparent!important}`
+          );
+          rules.push(
+            `.overflow-auto::-webkit-scrollbar-track,` +
+            `.overflow-y-auto::-webkit-scrollbar-track,` +
+            `.conversation-wrap::-webkit-scrollbar-track,` +
+            `.flex.flex-1.overflow-auto::-webkit-scrollbar-track` +
+            `{background:transparent!important}`
+          );
+          rules.push(
+            `.overflow-auto::-webkit-scrollbar-thumb,` +
+            `.overflow-y-auto::-webkit-scrollbar-thumb,` +
+            `.conversation-wrap::-webkit-scrollbar-thumb,` +
+            `.flex.flex-1.overflow-auto::-webkit-scrollbar-thumb` +
+            `{background:${thumbColor}!important;border-radius:4px!important}`
+          );
+          rules.push(
+            `.overflow-auto::-webkit-scrollbar-thumb:hover,` +
+            `.overflow-y-auto::-webkit-scrollbar-thumb:hover,` +
+            `.conversation-wrap::-webkit-scrollbar-thumb:hover,` +
+            `.flex.flex-1.overflow-auto::-webkit-scrollbar-thumb:hover` +
+            `{background:${thumbHover}!important}`
+          );
         }
+      }
+
+      // Default thin scrollbar fallback (when no custom bg color is set)
+      if (!ch.widgetBgColor) {
+        rules.push(
+          `.overflow-auto,.overflow-y-auto,.conversation-wrap,.flex.flex-1.overflow-auto` +
+          `{scrollbar-width:thin!important;scrollbar-color:rgba(0,0,0,0.12) transparent!important}`
+        );
+        rules.push(
+          `.overflow-auto::-webkit-scrollbar,.overflow-y-auto::-webkit-scrollbar,` +
+          `.conversation-wrap::-webkit-scrollbar,.flex.flex-1.overflow-auto::-webkit-scrollbar` +
+          `{width:4px!important;background:transparent!important}`
+        );
+        rules.push(
+          `.overflow-auto::-webkit-scrollbar-track,.overflow-y-auto::-webkit-scrollbar-track,` +
+          `.conversation-wrap::-webkit-scrollbar-track,.flex.flex-1.overflow-auto::-webkit-scrollbar-track` +
+          `{background:transparent!important}`
+        );
+        rules.push(
+          `.overflow-auto::-webkit-scrollbar-thumb,.overflow-y-auto::-webkit-scrollbar-thumb,` +
+          `.conversation-wrap::-webkit-scrollbar-thumb,.flex.flex-1.overflow-auto::-webkit-scrollbar-thumb` +
+          `{background:rgba(0,0,0,0.12)!important;border-radius:4px!important}`
+        );
+        rules.push(
+          `.overflow-auto::-webkit-scrollbar-thumb:hover,.overflow-y-auto::-webkit-scrollbar-thumb:hover,` +
+          `.conversation-wrap::-webkit-scrollbar-thumb:hover,.flex.flex-1.overflow-auto::-webkit-scrollbar-thumb:hover` +
+          `{background:rgba(0,0,0,0.2)!important}`
+        );
       }
 
       // Input focus — override box-shadow (Chatwoot uses shadow-n-brand on focus)
