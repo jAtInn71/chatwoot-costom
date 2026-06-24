@@ -59,6 +59,31 @@ export default {
     ctaTextColor() {
       return window.chatwootWebChannel?.ctaTextColor || null;
     },
+    inputBarBg() {
+      return window.chatwootWebChannel?.inputBarBgColor || null;
+    },
+    inputBarTextColor() {
+      return window.chatwootWebChannel?.inputBarTextColor || null;
+    },
+    inputBarStyle() {
+      const bg = this.inputBarBg;
+      const text = this.inputBarTextColor;
+      const style = {};
+      if (bg) style.background = bg;
+      if (this.isFocused) {
+        const c = this.widgetColor || '#1f93ff';
+        style.boxShadow = `0 0 0 1.5px ${c}`;
+      } else {
+        style.boxShadow = bg
+          ? `0 0 0 1px ${bg}`
+          : `0 0 0 1px var(--n-strong, rgba(0,0,0,0.12))`;
+      }
+      return style;
+    },
+    inputTextStyle() {
+      const text = this.inputBarTextColor;
+      return text ? { color: text } : {};
+    },
     showAttachment() {
       return (
         this.shouldShowFilePicker &&
@@ -216,15 +241,9 @@ export default {
 
     <!-- Input row -->
     <div
-      class="input-row items-center flex ltr:pl-3 rtl:pr-3 ltr:pr-2 rtl:pl-2 rounded-[7px] transition-all duration-200 bg-n-background"
-      :class="{
-        'rounded-t-none': stagedFile,
-      }"
-      :style="{
-        boxShadow: isFocused
-          ? `0 0 0 1px var(--widget-color, #1f93ff), 0 0 2px 3px color-mix(in srgb, var(--widget-color, #1f93ff) 20%, transparent)`
-          : `0 0 0 1px var(--n-strong, rgba(0,0,0,0.12))`,
-      }"
+      class="input-row items-center flex ltr:pl-3 rtl:pr-3 ltr:pr-2 rtl:pl-2 rounded-[7px] transition-all duration-200"
+      :class="{ 'rounded-t-none': stagedFile }"
+      :style="inputBarStyle"
       @keydown.esc="hideEmojiPicker"
     >
       <ResizableTextArea
@@ -235,6 +254,7 @@ export default {
         :aria-label="$t('CHAT_PLACEHOLDER')"
         :placeholder="stagedFile ? 'Add a message...' : $t('CHAT_PLACEHOLDER')"
         class="user-message-input reset-base"
+        :style="inputTextStyle"
         @typing-off="onTypingOff"
         @typing-on="onTypingOn"
         @focus="onFocus"
@@ -287,7 +307,9 @@ export default {
 }
 
 .user-message-input {
-  @apply border-none outline-none w-full placeholder:text-n-slate-10 resize-none h-8 min-h-8 max-h-60 py-1 px-0 my-2 bg-n-background text-n-slate-12 transition-all duration-200;
+  @apply border-none outline-none w-full placeholder:text-n-slate-10 resize-none h-8 min-h-8 max-h-60 py-1 px-0 my-2 text-n-slate-12 transition-all duration-200;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .chat-input-container {

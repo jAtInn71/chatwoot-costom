@@ -66,10 +66,12 @@ export default {
       userBubbleBgColor: '',
       userBubbleTextColor: '',
       inputFocusColor: '',
+      inputBarBgColor: '',
+      inputBarTextColor: '',
+      headerBgColor: '',
+      headerTextColor: '',
+      messageFontSize: 14,
       isUpdatingAppearance: false,
-      
-      // Widget Branding / Bubble Icon / Appearance removed in this build.
-      // Kept legacy fields for backward compatibility if backend sends them.
     }; 
   },
   validations: {
@@ -130,6 +132,11 @@ export default {
       this.userBubbleBgColor = this.inbox.user_bubble_bg_color || '';
       this.userBubbleTextColor = this.inbox.user_bubble_text_color || '';
       this.inputFocusColor = this.inbox.input_focus_color || '';
+      this.inputBarBgColor = this.inbox.input_bar_bg_color || '';
+      this.inputBarTextColor = this.inbox.input_bar_text_color || '';
+      this.headerBgColor = this.inbox.header_bg_color || '';
+      this.headerTextColor = this.inbox.header_text_color || '';
+      this.messageFontSize = this.inbox.message_font_size || 14;
     },
     handleHmacFlag() {
       this.updateInbox();
@@ -267,6 +274,11 @@ export default {
             user_bubble_bg_color: this.userBubbleBgColor.trim() || null,
             user_bubble_text_color: this.userBubbleTextColor.trim() || null,
             input_focus_color: this.inputFocusColor.trim() || null,
+            input_bar_bg_color: this.inputBarBgColor.trim() || null,
+            input_bar_text_color: this.inputBarTextColor.trim() || null,
+            header_bg_color: this.headerBgColor.trim() || null,
+            header_text_color: this.headerTextColor.trim() || null,
+            message_font_size: this.messageFontSize ? Number(this.messageFontSize) : null,
           },
         };
         await this.$store.dispatch('inboxes/updateInbox', payload);
@@ -441,6 +453,144 @@ export default {
           </label>
         </div>
       </SettingsSection>
+
+      <!-- ───────────────────────────────────────────────
+           WIDGET APPEARANCE SECTION
+      ─────────────────────────────────────────────── -->
+      <SettingsSection
+        title="Widget Appearance"
+        sub-title="Customize colors, fonts, and sizing for your chat widget."
+      >
+        <div class="flex flex-col gap-4 w-full max-w-3xl">
+
+          <!-- Row 1: Widget Background -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Widget Background Color</label>
+              <input v-model="widgetBgColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Widget Background Image URL</label>
+              <input v-model="widgetBgImageUrl" type="text" placeholder="https://..." class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 2: Font -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Widget Font Family</label>
+              <input v-model="widgetFontFamily" type="text" placeholder="Inter, sans-serif" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Message Font Size (px)</label>
+              <input v-model="messageFontSize" type="number" min="10" max="24" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 3: Header Colors -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Header Background</label>
+              <input v-model="headerBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Header Text Color</label>
+              <input v-model="headerTextColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 4: Welcome Heading -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Welcome Heading Color</label>
+              <input v-model="welcomeHeadingColor" type="text" placeholder="#1e293b" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Welcome Heading Size (px)</label>
+              <input v-model="welcomeHeadingSize" type="number" min="12" max="48" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 5: Welcome Tagline -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Welcome Tagline Color</label>
+              <input v-model="welcomeTaglineColor" type="text" placeholder="#64748b" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Welcome Tagline Size (px)</label>
+              <input v-model="welcomeTaglineSize" type="number" min="10" max="32" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 6: CTA Button -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">CTA Button Background</label>
+              <input v-model="ctaBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">CTA Button Text Color</label>
+              <input v-model="ctaTextColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 7: Bot Bubble -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Bot Bubble Background</label>
+              <input v-model="botBubbleBgColor" type="text" placeholder="#f1f5f9" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Bot Bubble Text Color</label>
+              <input v-model="botBubbleTextColor" type="text" placeholder="#1e293b" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 8: User Bubble -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">User Bubble Background</label>
+              <input v-model="userBubbleBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">User Bubble Text Color</label>
+              <input v-model="userBubbleTextColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <!-- Row 9: Input Bar -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Input Bar Background</label>
+              <input v-model="inputBarBgColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
+              <p class="text-xs text-n-slate-10">Background of the chat input area. Leave blank for auto-contrast.</p>
+            </div>
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Input Bar Text Color</label>
+              <input v-model="inputBarTextColor" type="text" placeholder="#1e293b" class="chatwoot-input w-full" />
+              <p class="text-xs text-n-slate-10">Text color inside the chat input. Leave blank for auto-contrast.</p>
+            </div>
+          </div>
+
+          <!-- Row 10: Input Focus -->
+          <div class="flex flex-wrap gap-4">
+            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
+              <label class="text-sm font-medium text-n-slate-12">Input Focus Border Color</label>
+              <input v-model="inputFocusColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
+            </div>
+          </div>
+
+          <div class="mt-2">
+            <NextButton
+              label="Save Appearance Settings"
+              :is-loading="isUpdatingAppearance"
+              @click="updateAppearanceSettings"
+            />
+          </div>
+        </div>
+      </SettingsSection>
+      <!-- ─── END WIDGET APPEARANCE ─── -->
 
       <!-- ───────────────────────────────────────────────
            VOICE AGENT CONFIGURATION SECTION
