@@ -99,18 +99,20 @@ export const IFrameHelper = {
     );
   },
   initPostMessageCommunication: () => {
-    window.onmessage = e => {
+    window.addEventListener('message', e => {
       if (
         typeof e.data !== 'string' ||
         e.data.indexOf('chatwoot-widget:') !== 0
       ) {
         return;
       }
-      const message = JSON.parse(e.data.replace('chatwoot-widget:', ''));
-      if (typeof IFrameHelper.events[message.event] === 'function') {
-        IFrameHelper.events[message.event](message);
-      }
-    };
+      try {
+        const message = JSON.parse(e.data.replace('chatwoot-widget:', ''));
+        if (typeof IFrameHelper.events[message.event] === 'function') {
+          IFrameHelper.events[message.event](message);
+        }
+      } catch (_) {}
+    });
   },
   initWindowSizeListener: () => {
     window.addEventListener('resize', () => IFrameHelper.toggleCloseButton());

@@ -20,6 +20,124 @@
 //     When no voice call is active, normal full-page navigation works as usual.
 //
 // ─────────────────────────────────────────────────────────────────────────────
+// ── Native API Shield (restore) ─────────────────────────────────────────────
+// The prefix script (sdk-stream-fix.js) saved every native browser API that
+// modern frameworks depend on. The Chatwoot SDK code ran in between and may
+// have monkey-patched some of them. We now restore the originals so the HOST
+// page works exactly as if the SDK never touched global state.
+// The widget runs inside an iframe with its own JS context — unaffected.
+;(function () {
+  var s = window.__cwNativeAPIs;
+  if (!s) return;
+  var w = window, d = document, h = w.history;
+
+  // Only restore if the SDK actually changed it (avoid overwriting with undefined
+  // on browsers that don't support a given API).
+  function r(obj, key, orig) {
+    try {
+      if (orig !== undefined && obj[key] !== orig) obj[key] = orig;
+    } catch (_) {}
+  }
+
+  // Streaming
+  r(w, 'ReadableStream',       s.ReadableStream);
+  r(w, 'WritableStream',       s.WritableStream);
+  r(w, 'TransformStream',      s.TransformStream);
+  // Fetch / Network
+  r(w, 'fetch',                s.fetch);
+  r(w, 'Request',              s.Request);
+  r(w, 'Response',             s.Response);
+  r(w, 'Headers',              s.Headers);
+  r(w, 'AbortController',      s.AbortController);
+  r(w, 'AbortSignal',          s.AbortSignal);
+  r(w, 'XMLHttpRequest',       s.XMLHttpRequest);
+  r(w, 'EventSource',          s.EventSource);
+  r(w, 'WebSocket',            s.WebSocket);
+  // Navigation / History
+  if (h) {
+    r(h, 'pushState',          s.historyPushState);
+    r(h, 'replaceState',       s.historyReplaceState);
+  }
+  // URL
+  r(w, 'URL',                  s.URL);
+  r(w, 'URLSearchParams',      s.URLSearchParams);
+  // Observers
+  r(w, 'MutationObserver',     s.MutationObserver);
+  r(w, 'IntersectionObserver', s.IntersectionObserver);
+  r(w, 'ResizeObserver',       s.ResizeObserver);
+  r(w, 'PerformanceObserver',  s.PerformanceObserver);
+  // Messaging
+  r(w, 'MessageChannel',       s.MessageChannel);
+  r(w, 'MessagePort',          s.MessagePort);
+  r(w, 'BroadcastChannel',     s.BroadcastChannel);
+  // Promises / Async
+  r(w, 'Promise',              s.Promise);
+  r(w, 'queueMicrotask',       s.queueMicrotask);
+  // Timers
+  r(w, 'setTimeout',           s.setTimeout);
+  r(w, 'clearTimeout',         s.clearTimeout);
+  r(w, 'setInterval',          s.setInterval);
+  r(w, 'clearInterval',        s.clearInterval);
+  r(w, 'requestAnimationFrame',    s.requestAnimationFrame);
+  r(w, 'cancelAnimationFrame',     s.cancelAnimationFrame);
+  r(w, 'requestIdleCallback',      s.requestIdleCallback);
+  r(w, 'cancelIdleCallback',       s.cancelIdleCallback);
+  // Events
+  r(w, 'CustomEvent',          s.CustomEvent);
+  r(w, 'Event',                s.Event);
+  // DOM (document methods — only restore if they were captured)
+  try {
+    if (s.createElement)      d.createElement      = s.createElement;
+    if (s.createElementNS)    d.createElementNS    = s.createElementNS;
+    if (s.createTreeWalker)   d.createTreeWalker   = s.createTreeWalker;
+    if (s.querySelector)      d.querySelector      = s.querySelector;
+    if (s.querySelectorAll)   d.querySelectorAll   = s.querySelectorAll;
+  } catch (_) {}
+
+  // ── Restore window.onmessage ──────────────────────────────────────────
+  // The prefix made onmessage a non-overwritable property that captures
+  // any handler the SDK tried to set via addEventListener instead.
+  // Now remove that guard so the host page can use onmessage normally.
+  try {
+    // Remove the captured handlers that Chatwoot set via the trapped setter
+    // (they're already registered as addEventListener — no data loss)
+    var trapped = w.__cwOnMessageHandlers || [];
+    // Delete the property descriptor to restore normal behavior
+    delete w.onmessage;
+    // If delete didn't work (some engines), redefine as writable
+    if (Object.getOwnPropertyDescriptor(w, 'onmessage')) {
+      Object.defineProperty(w, 'onmessage', {
+        configurable: true,
+        writable: true,
+        value: null,
+      });
+    }
+    delete w.__cwOnMessageHandlers;
+  } catch (_) {}
+
+  // ── Restore prototypes if polluted ────────────────────────────────────
+  try {
+    var snap = w.__cwProtoSnapshot;
+    if (snap) {
+      var currentArrayKeys = Object.getOwnPropertyNames(Array.prototype);
+      currentArrayKeys.forEach(function (k) {
+        if (snap.ArrayProtoKeys.indexOf(k) === -1) {
+          try { delete Array.prototype[k]; } catch (_) {}
+        }
+      });
+      var currentObjKeys = Object.getOwnPropertyNames(Object.prototype);
+      currentObjKeys.forEach(function (k) {
+        if (snap.ObjectProtoKeys.indexOf(k) === -1) {
+          try { delete Object.prototype[k]; } catch (_) {}
+        }
+      });
+      delete w.__cwProtoSnapshot;
+    }
+  } catch (_) {}
+
+  delete w.__cwNativeAPIs;
+})();
+
 ;(function () {
   if (window._cwVoiceInstalled) return;
   window._cwVoiceInstalled = true;
@@ -85,29 +203,43 @@
   }
 
   // ── Fix iframe audio autoplay permission ────────────────────────────────
-  // Browsers block audio autoplay inside iframes unless explicitly allowed.
-  // We patch the iframe's allow attribute as soon as it appears in the DOM.
+  // Only patches the Chatwoot iframe (by ID), not every iframe on the page.
   function fixIframeAudioPermission() {
-    var iframes = document.querySelectorAll('iframe');
-    iframes.forEach(function(f) {
+    try {
+      var f = document.getElementById('chatwoot_live_chat_widget');
       if (!f || !f.getAttribute) return;
-      try {
-        var allow = f.getAttribute('allow') || '';
-        var needs = ['microphone', 'autoplay', 'camera'];
-        var missing = needs.filter(function(p) { return !allow.includes(p); });
-        if (missing.length > 0) {
-          f.setAttribute('allow', (allow + '; ' + missing.join('; ')).trim());
-        }
-      } catch (_) {}
-    });
+      var allow = f.getAttribute('allow') || '';
+      var needs = ['microphone', 'autoplay', 'camera'];
+      var missing = needs.filter(function(p) { return !allow.includes(p); });
+      if (missing.length > 0) {
+        f.setAttribute('allow', (allow + '; ' + missing.join('; ')).trim());
+      }
+    } catch (_) {}
   }
 
-  // Run immediately and observe for new iframes
+  // Run once immediately; then observe only direct children of body (not subtree)
+  // so framework DOM updates (React, Vue, Svelte) don't trigger this.
   fixIframeAudioPermission();
-  var _iframeObserver = new MutationObserver(function() {
-    fixIframeAudioPermission();
-  });
-  _iframeObserver.observe(document.body, { childList: true, subtree: true });
+  try {
+    var _iframeObserver = new MutationObserver(function(mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        for (var j = 0; j < mutations[i].addedNodes.length; j++) {
+          var node = mutations[i].addedNodes[j];
+          if (node.id === 'cw-widget-holder' || node.id === 'chatwoot_live_chat_widget') {
+            fixIframeAudioPermission();
+            return;
+          }
+        }
+      }
+    });
+    if (document.body) {
+      _iframeObserver.observe(document.body, { childList: true });
+    } else {
+      document.addEventListener('DOMContentLoaded', function() {
+        _iframeObserver.observe(document.body, { childList: true });
+      });
+    }
+  } catch (_) {}
 
   // ── Custom bubble icon support ───────────────────────────────────────────
   // Intercepts the 'loaded' chatwoot-widget postMessage (sent by the widget
@@ -512,19 +644,23 @@
   }
 
   window.addEventListener('message', function (e) {
-    var data = e.data;
-    if (!data || typeof data !== 'object') return;
-    var ev = data.event;
+    try {
+      var data = e.data;
+      if (!data || typeof data !== 'object') return;
+      var ev = data.event;
+      // Only handle Chatwoot-prefixed voice events — ignore everything else
+      if (typeof ev !== 'string' || ev.indexOf('cw-') !== 0) return;
 
-    if (ev === 'cw-voice-call-started') {
-      window._cwVoiceActive = true;
-      applyVoiceState(true, false);
-      try { _prevWidgetOpen = null; } catch (_) {}
-    } else if (ev === 'cw-voice-call-ended') {
-      window._cwVoiceActive = false;
-      applyVoiceState(false, false);
-      try { _prevWidgetOpen = null; } catch (_) {}
-    }
+      if (ev === 'cw-voice-call-started') {
+        window._cwVoiceActive = true;
+        applyVoiceState(true, false);
+        _prevWidgetOpen = null;
+      } else if (ev === 'cw-voice-call-ended') {
+        window._cwVoiceActive = false;
+        applyVoiceState(false, false);
+        _prevWidgetOpen = null;
+      }
+    } catch (_) {}
   });
 
 }());

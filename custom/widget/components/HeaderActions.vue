@@ -29,6 +29,7 @@ export default {
     return {
       isEndingChat: false,
       showConfirmExitChat: false,
+      isMobileView: false,
     };
   },
   computed: {
@@ -48,7 +49,7 @@ export default {
       return RNHelper.isRNWebView();
     },
     showHeaderActions() {
-      return this.isIframe || this.isRNWebView || this.hasWidgetOptions;
+      return this.isIframe || this.isRNWebView || this.hasWidgetOptions || this.isMobileView;
     },
     hasWidgetOptions() {
       return this.conversationStatus === 'open';
