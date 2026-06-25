@@ -268,7 +268,10 @@ export const IFrameHelper = {
 
     setUnreadMode: () => {
       addUnreadClass();
-      onBubbleClick({ toggleValue: true });
+      // On mobile (≤666px) only show the badge — don't auto-open the widget
+      if (!window.matchMedia('(max-width: 666px)').matches) {
+        onBubbleClick({ toggleValue: true });
+      }
     },
 
     resetUnreadMode: () => removeUnreadClass(),

@@ -62,7 +62,27 @@ export default {
       ].includes(this.conversationStatus);
     },
   },
+  mounted() {
+    this.checkMobile();
+    this._resizeHandler = () => this.checkMobile();
+    window.addEventListener('resize', this._resizeHandler);
+  },
+  beforeUnmount() {
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+    }
+  },
   methods: {
+    checkMobile() {
+      this.isMobileView = window.innerWidth <= 666;
+    },
+    minimizeWidget() {
+      if (IFrameHelper.isIFrame()) {
+        IFrameHelper.sendMessage({ event: 'closeWindow' });
+      } else if (RNHelper.isRNWebView) {
+        RNHelper.sendMessage({ type: 'close-widget' });
+      }
+    },
     sendCloseMessage() {
       if (IFrameHelper.isIFrame()) {
         IFrameHelper.sendMessage({ event: 'closeWindow' });
@@ -85,7 +105,6 @@ export default {
       this.showConfirmExitChat = false;
 
       try {
-        // STEP 1: Resolve the conversation server-side (before clearing auth).
         if (
           [
             CONVERSATION_STATUS.OPEN,
@@ -96,8 +115,6 @@ export default {
           try { await toggleStatus(); } catch (_) {}
         }
 
-        // STEP 2: Save user data + set restart mode BEFORE clearing session.
-        // On next widget open: pre-chat form pre-filled, no message box.
         try {
           const user = this.currentUser;
           if (user?.name || user?.email || user?.phone_number) {
@@ -110,16 +127,9 @@ export default {
           localStorage.setItem('cw_restart_mode', '1');
         } catch (_) {}
 
-        // STEP 3: Clear session data (auth token, storage, Vuex state).
         this.$store.dispatch('contacts/softExitChat');
-
-        // STEP 4: Close the widget immediately.
         this.sendCloseMessage();
-
-        // STEP 5: Navigate to home before reload so URL hash resets to #/
         try { this.router.replace({ name: 'home' }); } catch (_) {}
-
-        // STEP 6: Reload — next bubble click opens a clean fresh session.
         setTimeout(() => { window.location.reload(); }, 400);
 
       } catch (_) {
@@ -135,6 +145,18 @@ export default {
 
 <template>
   <div v-if="showHeaderActions" class="actions flex items-center gap-1">
+
+    <!-- Minimize button — visible only on mobile ≤666px -->
+    <button
+      v-if="isMobileView"
+      class="header-action-btn minimize-btn"
+      title="Minimize Chat"
+      @click="minimizeWidget"
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5 12H19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </button>
 
     <div v-if="canEndChat && showEndConversationButton" class="relative">
       <button
@@ -198,6 +220,12 @@ export default {
   &:active:not(:disabled) { transform: scale(0.95); }
   &:disabled { opacity: 0.4; cursor: not-allowed; }
   &.active { background: rgba(0, 0, 0, 0.1); }
+}
+
+.minimize-btn {
+  color: var(--color-body, #1b1b1b);
+  &:hover:not(:disabled) { background: rgba(0, 0, 0, 0.08); }
+  svg path { stroke: currentColor; }
 }
 
 .exit-chat-btn {
@@ -316,5 +344,6 @@ export default {
   .confirm-sub { color: #94a3b8; }
   .confirm-cancel { background: #334155; color: #cbd5e1; &:hover { background: #475569; } }
   .header-action-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
+  .minimize-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
 }
 </style>

@@ -314,8 +314,10 @@
   window.addEventListener('chatwoot:ready', function () {
 
     // ── Restore widget state from previous page ──────────────────────────
+    // On mobile (≤666px) never auto-open — user must tap the bubble manually.
     try {
-      if (localStorage.getItem(WIDGET_OPEN_KEY) === 'true') {
+      var _isMobileScreen = window.matchMedia('(max-width: 666px)').matches;
+      if (!_isMobileScreen && localStorage.getItem(WIDGET_OPEN_KEY) === 'true') {
         setTimeout(function () {
           try {
             if (window.$chatwoot && !window.$chatwoot.isOpen) {
