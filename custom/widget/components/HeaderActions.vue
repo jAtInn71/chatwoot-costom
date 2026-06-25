@@ -223,8 +223,13 @@ export default {
 }
 
 .minimize-btn {
-  color: var(--color-body, #1b1b1b);
-  &:hover:not(:disabled) { background: rgba(0, 0, 0, 0.08); }
+  // Inherit text color from header — works with any headerTextColor, gradient, or solid bg
+  color: inherit;
+  // Semi-transparent white+black layered bg ensures visibility on ANY background color
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
   svg path { stroke: currentColor; }
 }
 
@@ -344,6 +349,9 @@ export default {
   .confirm-sub { color: #94a3b8; }
   .confirm-cancel { background: #334155; color: #cbd5e1; &:hover { background: #475569; } }
   .header-action-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
-  .minimize-btn:hover:not(:disabled) { background: rgba(255,255,255,0.08); }
+  .minimize-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.15);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+  }
 }
 </style>
