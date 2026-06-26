@@ -70,6 +70,41 @@
     querySelectorAll:     d.querySelectorAll && d.querySelectorAll.bind(d),
   };
 
+  // ── 1b. Patch ReadableStream to silence "enqueue on closed stream" ──────
+  // Chatwoot's bundled axios/fetch adapter sometimes tries to enqueue a chunk
+  // after the stream is already closed (race during Next.js App Router nav).
+  // Wrap the native ReadableStream so controller.enqueue() is a safe no-op
+  // when the stream is already closed. The restore block puts the original back.
+  try {
+    var NativeRS = w.ReadableStream;
+    if (NativeRS) {
+      w.ReadableStream = function(underlyingSource, strategy) {
+        var wrappedSource;
+        if (underlyingSource && typeof underlyingSource.start === 'function') {
+          var origStart = underlyingSource.start;
+          wrappedSource = Object.create(underlyingSource);
+          wrappedSource.start = function(controller) {
+            var origEnqueue = controller.enqueue.bind(controller);
+            controller.enqueue = function(chunk) {
+              try { origEnqueue(chunk); } catch(e) {
+                if (e && e.message && e.message.indexOf('closed') !== -1) return;
+                throw e;
+              }
+            };
+            return origStart.call(underlyingSource, controller);
+          };
+        } else {
+          wrappedSource = underlyingSource;
+        }
+        return new NativeRS(wrappedSource, strategy);
+      };
+      w.ReadableStream.prototype = NativeRS.prototype;
+      Object.keys(NativeRS).forEach(function(k) {
+        try { w.ReadableStream[k] = NativeRS[k]; } catch(_){}
+      });
+    }
+  } catch (_) {}
+
   // ── 2. Protect window.onmessage from being overwritten ─────────────────
   // Many SDKs (including Chatwoot upstream) do window.onmessage = fn which
   // kills ALL other postMessage listeners (Sanity Live, Stripe, OAuth, etc.)
