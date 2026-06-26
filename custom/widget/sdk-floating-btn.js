@@ -2,7 +2,7 @@
 // Appended to sdk.js at Docker build time — runs on every parent page that
 // loads sdk.js. Nothing extra needed in the embed snippet.
 //
-// THREE FEATURES bundled here:
+// FEATURES bundled here (all host-page-safe — no global API patching):
 //
 //  1. WIDGET STATE PERSISTENCE
 //     If widget was open when user navigated away, auto-open it on the new page.
@@ -12,20 +12,17 @@
 //     Red pulsing button appears on the page when a voice call is active.
 //     Visible even when widget bubble is minimized. Click to end the call.
 //
-//  3. VOICE-AWARE SPA NAVIGATION
-//     When a voice call is active, link clicks are intercepted and the new page
-//     is loaded via fetch() — replacing only the body content. The Chatwoot
-//     widget iframe is detached before the swap and re-attached after, so the
-//     WebRTC connection is NEVER destroyed. Voice call continues without dropping.
-//     When no voice call is active, normal full-page navigation works as usual.
+//  4. PRE-CHAT FORM AUTO-FILL from website cookies (see below).
+//
+//  (Former Feature 3 — voice-aware SPA navigation — was removed; it re-ran
+//   host page scripts and broke modern frameworks. See the note further down.)
 //
 // ─────────────────────────────────────────────────────────────────────────────
-// ── Native API Shield (restore) ─────────────────────────────────────────────
-// The prefix script (sdk-stream-fix.js) saved every native browser API that
-// modern frameworks depend on. The Chatwoot SDK code ran in between and may
-// have monkey-patched some of them. We now restore the originals so the HOST
-// page works exactly as if the SDK never touched global state.
-// The widget runs inside an iframe with its own JS context — unaffected.
+// ── Native API Shield (restore) — INERT ─────────────────────────────────────
+// This block used to restore native browser APIs saved by the prefix script
+// (sdk-stream-fix.js). That prefix has been removed, so window.__cwNativeAPIs
+// is undefined and this block early-returns (no-op). Kept for now so old
+// cached builds degrade safely; can be deleted in a later cleanup.
 ;(function () {
   var s = window.__cwNativeAPIs;
   if (!s) return;
@@ -442,175 +439,31 @@
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  // FEATURE 3 — Voice-aware SPA navigation
+  // FEATURE 3 — Voice-aware SPA navigation  [REMOVED]
   // ════════════════════════════════════════════════════════════════════════
   //
-  // Elements preserved across SPA swaps:
-  //   #woot-widget-holder  — Chatwoot widget container (includes the iframe)
-  //   #cw-voice-end-btn    — floating End Call button
-  //   #cw-voice-style      — CSS keyframes for the button
-
-  // Scripts that were already loaded — don't reload them on page swap
-  var _loadedScripts = {};
-  (function () {
-    document.querySelectorAll('script[src]').forEach(function (s) {
-      _loadedScripts[s.src] = true;
-    });
-  })();
-
-  // All Chatwoot-owned body elements — never wrap or swap these out.
-  // From sdk.js source:
-  //   v.id = "cw-widget-holder"   (iframe holder)
-  //   C.id = "cw-bubble-holder"   (floating bubble button)
-  //   e.id = "cw-widget-styles"   (injected <style> tag)
-  //   iframe id = "chatwoot_live_chat_widget"
-  var _widgetIds = {
-    'cw-widget-holder':         1,   // main widget container
-    'cw-bubble-holder':         1,   // floating bubble button
-    'cw-widget-styles':         1,   // Chatwoot injected styles
-    'woot-widget-holder':       1,   // older Chatwoot builds
-    'chatwoot_live_chat_widget':1,   // the iframe itself
-    'cw-voice-end-btn':         1,   // our End Call button
-    'cw-voice-style':           1,   // our pulse animation style
-    'cw-voice-hide-style':      1,   // our hide-widget style
-  };
-
-  // Wrap all non-widget body children in a #spa-content div so SPA swaps
-  // only replace that div — the Chatwoot widget iframe stays in <body> at
-  // all times, which means iframe.contentWindow is NEVER null during a swap.
-  function ensureSpaContainer() {
-    var existing = document.getElementById('spa-content');
-    if (existing) return existing;
-
-    var container = document.createElement('div');
-    container.id = 'spa-content';
-
-    var toMove = [];
-    Array.from(document.body.children).forEach(function (c) {
-      var skip = _widgetIds[c.id] ||
-                 c.classList.contains('woot-widget-holder') ||
-                 c.classList.contains('woot--bubble-holder');
-      if (!skip) toMove.push(c);
-    });
-    toMove.forEach(function (c) { container.appendChild(c); });
-    // Insert before any widget elements that are already in body
-    document.body.insertBefore(container, document.body.firstChild);
-    return container;
-  }
-
-  function spaNavigate(href) {
-    if (window._spaNavigating) return;
-    window._spaNavigating = true;
-
-    fetch(href, { credentials: 'same-origin' })
-      .then(function (r) {
-        var ct = r.headers.get('content-type') || '';
-        if (!ct.includes('text/html')) {
-          window._spaNavigating = false;
-          location.href = href;
-          return null;
-        }
-        return r.text();
-      })
-      .then(function (html) {
-        if (!html) return;
-        var newDoc = new DOMParser().parseFromString(html, 'text/html');
-        var container = ensureSpaContainer();
-
-        // Update <title>
-        document.title = newDoc.title;
-
-        // Swap page-specific stylesheets in <head>
-        document.querySelectorAll('head link[rel="stylesheet"][data-spa]')
-          .forEach(function (l) { l.remove(); });
-        newDoc.querySelectorAll('link[rel="stylesheet"]').forEach(function (l) {
-          if (!document.querySelector('link[href="' + l.href + '"]')) {
-            var clone = l.cloneNode(true);
-            clone.setAttribute('data-spa', '1');
-            document.head.appendChild(clone);
-          }
-        });
-        var oldStyle = document.querySelector('head style[data-spa]');
-        if (oldStyle) oldStyle.remove();
-        var newStyle = newDoc.querySelector('head style');
-        if (newStyle) {
-          var s = newStyle.cloneNode(true);
-          s.setAttribute('data-spa', '1');
-          document.head.appendChild(s);
-        }
-
-        // Collect scripts BEFORE innerHTML wipes them
-        var scripts = Array.from(newDoc.body.querySelectorAll('script'));
-
-        // Replace ONLY the content container — widget iframe stays in body untouched.
-        // Chatwoot's MutationObserver fires here but finds the iframe still in body,
-        // so iframe.contentWindow is never null.
-        container.innerHTML = newDoc.body.innerHTML;
-
-        // Re-execute page scripts (sliders, analytics, etc.)
-        scripts.forEach(function (oldScript) {
-          var newScript = document.createElement('script');
-          if (oldScript.src) {
-            if (_loadedScripts[oldScript.src]) return;
-            newScript.src   = oldScript.src;
-            newScript.async = oldScript.async;
-            newScript.defer = oldScript.defer;
-            _loadedScripts[oldScript.src] = true;
-          } else {
-            var txt = oldScript.textContent || '';
-            // Skip Chatwoot embed snippets — sdk.js is already live
-            if (txt.includes('chatwootSDK') || txt.includes('/packs/js/sdk.js') ||
-                txt.includes('chatwoot:ready')) return;
-            newScript.textContent = txt;
-          }
-          container.appendChild(newScript);
-        });
-
-        history.pushState({}, document.title, href);
-        window.scrollTo(0, 0);
-        try { window.dispatchEvent(new PopStateEvent('popstate', { state: history.state })); } catch (_) {}
-        window._spaNavigating = false;
-      })
-      .catch(function () {
-        window._spaNavigating = false;
-        location.href = href;
-      });
-  }
-
-  // ── Voice-only SPA navigation ─────────────────────────────────────────────
-  // Only intercept link clicks when a voice call is active — this keeps the
-  // WebRTC connection alive across page changes. When no call is active,
-  // normal full-page navigation runs so third-party scripts (analytics,
-  // CMS live-preview, etc.) are never disrupted.
-  document.addEventListener('click', function (e) {
-    if (!window._cwVoiceActive) return; // no voice call → normal navigation
-
-    var a = e.target.closest('a[href]');
-    if (!a || a.target || a.download) return;
-
-    var raw = a.getAttribute('href') || '';
-    if (raw.startsWith('#') || raw.startsWith('mailto:') ||
-        raw.startsWith('tel:') || raw.startsWith('javascript:')) return;
-
-    try {
-      var url = new URL(a.href, location.href);
-      if (url.origin !== location.origin) return;
-      if (url.pathname === location.pathname && url.search === location.search &&
-          url.hash !== location.hash) return;
-      e.preventDefault();
-      spaNavigate(url.href);
-    } catch (_) {}
-  });
-
-  // Handle browser Back / Forward buttons (only during voice call)
-  window.addEventListener('popstate', function () {
-    if (!window._cwVoiceActive) return;
-    spaNavigate(location.href);
-  });
-
+  // The old fetch-and-swap SPA navigation (spaNavigate / ensureSpaContainer +
+  // link-click interceptor) was removed because it re-executed every page
+  // <script> on navigation. On modern frameworks (React, Next.js App Router,
+  // Vue, Svelte, Sanity Live) that re-execution corrupts hydration and
+  // streaming state — it caused:
+  //   "Failed to execute 'enqueue' on 'ReadableStreamDefaultController':
+  //    Cannot enqueue a chunk into a readable stream that is closed"
+  //
+  // It is also unnecessary:
+  //   • SPA frameworks already do client-side routing WITHOUT a full reload,
+  //     and the Chatwoot iframe lives directly in <body> (outside the framework
+  //     root), so an active voice call survives navigation on its own.
+  //   • Plain multi-page HTML sites (full reloads) should use the standalone
+  //     voice-popup.html, which runs the call in its own window and survives
+  //     parent-page reloads.
+  //
+  // Result: the host page is now framework-agnostic — sdk.js only adds the
+  // iframe widget + a few safe DOM helpers, and never patches globals or
+  // re-runs host scripts.
 
   // ════════════════════════════════════════════════════════════════════════
-  // postMessage listener — bridges Features 2, 3 & 4
+  // postMessage listener — bridges Features 2 & 4
   // ════════════════════════════════════════════════════════════════════════
 
   // ── Voice call state indicators ────────────────────────────────
