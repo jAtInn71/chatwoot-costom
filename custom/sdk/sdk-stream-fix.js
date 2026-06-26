@@ -108,21 +108,35 @@
   // ── 2. Protect window.onmessage from being overwritten ─────────────────
   // Many SDKs (including Chatwoot upstream) do window.onmessage = fn which
   // kills ALL other postMessage listeners (Sanity Live, Stripe, OAuth, etc.)
-  // We freeze the property so assignment silently fails, and any handler
-  // that was meant to be set via onmessage is captured and forwarded via
-  // addEventListener instead.
+  // We intercept the assignment: the FIRST setter (Chatwoot's own SDK) is
+  // allowed through natively so the iframe ↔ parent communication works.
+  // Subsequent setters are captured via addEventListener so they don't
+  // clobber Chatwoot's handler.
   w.__cwOnMessageHandlers = [];
-  var _origOnMessage = w.onmessage;
+  var _cwOnMsgCount = 0;
+  var _origOnMessageDesc = Object.getOwnPropertyDescriptor(w, 'onmessage');
   try {
     Object.defineProperty(w, 'onmessage', {
       configurable: true,
-      get: function() { return _origOnMessage; },
+      get: function() {
+        if (_origOnMessageDesc && _origOnMessageDesc.get) {
+          return _origOnMessageDesc.get.call(w);
+        }
+        return w._cwCurrentOnMessage || null;
+      },
       set: function(fn) {
-        if (typeof fn === 'function') {
+        _cwOnMsgCount++;
+        if (_cwOnMsgCount === 1) {
+          // First call is Chatwoot's own SDK — let it set natively
+          if (_origOnMessageDesc && _origOnMessageDesc.set) {
+            _origOnMessageDesc.set.call(w, fn);
+          }
+          w._cwCurrentOnMessage = fn;
+        } else if (typeof fn === 'function') {
+          // Later calls from other SDKs — redirect to addEventListener
           w.__cwOnMessageHandlers.push(fn);
           w.addEventListener('message', fn);
         }
-        // Don't actually set window.onmessage — prevents overwrite
       }
     });
   } catch (_) {}
