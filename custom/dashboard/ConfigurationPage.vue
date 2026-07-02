@@ -52,27 +52,7 @@ export default {
       customBubbleIconUrl: '',
       customBubbleIconSize: 60,
       isUpdatingBubbleIcon: false,
-      widgetBgColor: '',
-      widgetBgImageUrl: '',
-      widgetFontFamily: '',
-      welcomeHeadingColor: '',
-      welcomeHeadingSize: 24,
-      welcomeTaglineColor: '',
-      welcomeTaglineSize: 14,
-      ctaBgColor: '',
-      ctaTextColor: '',
-      botBubbleBgColor: '',
-      botBubbleTextColor: '',
-      userBubbleBgColor: '',
-      userBubbleTextColor: '',
-      inputFocusColor: '',
-      inputBarBgColor: '',
-      inputBarTextColor: '',
-      headerBgColor: '',
-      headerTextColor: '',
-      messageFontSize: 14,
-      isUpdatingAppearance: false,
-    }; 
+    };
   },
   validations: {
     whatsAppInboxAPIKey: { required },
@@ -118,25 +98,6 @@ export default {
       this.customBrandingUrl = this.inbox.custom_branding_url || '';
       this.customBubbleIconUrl = this.inbox.custom_bubble_icon_url || '';
       this.customBubbleIconSize = this.inbox.custom_bubble_icon_size ?? 60;
-      this.widgetBgColor = this.inbox.widget_bg_color || '';
-      this.widgetBgImageUrl = this.inbox.widget_bg_image_url || '';
-      this.widgetFontFamily = this.inbox.widget_font_family || '';
-      this.welcomeHeadingColor = this.inbox.welcome_heading_color || '';
-      this.welcomeHeadingSize = this.inbox.welcome_heading_size || 24;
-      this.welcomeTaglineColor = this.inbox.welcome_tagline_color || '';
-      this.welcomeTaglineSize = this.inbox.welcome_tagline_size || 14;
-      this.ctaBgColor = this.inbox.cta_bg_color || '';
-      this.ctaTextColor = this.inbox.cta_text_color || '';
-      this.botBubbleBgColor = this.inbox.bot_bubble_bg_color || '';
-      this.botBubbleTextColor = this.inbox.bot_bubble_text_color || '';
-      this.userBubbleBgColor = this.inbox.user_bubble_bg_color || '';
-      this.userBubbleTextColor = this.inbox.user_bubble_text_color || '';
-      this.inputFocusColor = this.inbox.input_focus_color || '';
-      this.inputBarBgColor = this.inbox.input_bar_bg_color || '';
-      this.inputBarTextColor = this.inbox.input_bar_text_color || '';
-      this.headerBgColor = this.inbox.header_bg_color || '';
-      this.headerTextColor = this.inbox.header_text_color || '';
-      this.messageFontSize = this.inbox.message_font_size || 14;
     },
     handleHmacFlag() {
       this.updateInbox();
@@ -251,42 +212,6 @@ export default {
         useAlert(this.$t('INBOX_MGMT.EDIT.API.ERROR_MESSAGE'));
       } finally {
         this.isUpdatingBranding = false;
-      }
-    },
-    async updateAppearanceSettings() {
-      this.isUpdatingAppearance = true;
-      try {
-        const payload = {
-          id: this.inbox.id,
-          formData: false,
-          channel: {
-            widget_bg_color: this.widgetBgColor.trim() || null,
-            widget_bg_image_url: this.widgetBgImageUrl.trim() || null,
-            widget_font_family: this.widgetFontFamily.trim() || null,
-            welcome_heading_color: this.welcomeHeadingColor.trim() || null,
-            welcome_heading_size: this.welcomeHeadingSize ? Number(this.welcomeHeadingSize) : null,
-            welcome_tagline_color: this.welcomeTaglineColor.trim() || null,
-            welcome_tagline_size: this.welcomeTaglineSize ? Number(this.welcomeTaglineSize) : null,
-            cta_bg_color: this.ctaBgColor.trim() || null,
-            cta_text_color: this.ctaTextColor.trim() || null,
-            bot_bubble_bg_color: this.botBubbleBgColor.trim() || null,
-            bot_bubble_text_color: this.botBubbleTextColor.trim() || null,
-            user_bubble_bg_color: this.userBubbleBgColor.trim() || null,
-            user_bubble_text_color: this.userBubbleTextColor.trim() || null,
-            input_focus_color: this.inputFocusColor.trim() || null,
-            input_bar_bg_color: this.inputBarBgColor.trim() || null,
-            input_bar_text_color: this.inputBarTextColor.trim() || null,
-            header_bg_color: this.headerBgColor.trim() || null,
-            header_text_color: this.headerTextColor.trim() || null,
-            message_font_size: this.messageFontSize ? Number(this.messageFontSize) : null,
-          },
-        };
-        await this.$store.dispatch('inboxes/updateInbox', payload);
-        useAlert(this.$t('INBOX_MGMT.EDIT.API.SUCCESS_MESSAGE'));
-      } catch (error) {
-        useAlert(this.$t('INBOX_MGMT.EDIT.API.ERROR_MESSAGE'));
-      } finally {
-        this.isUpdatingAppearance = false;
       }
     },
     async updateVoiceAgentSettings() {
@@ -453,144 +378,6 @@ export default {
           </label>
         </div>
       </SettingsSection>
-
-      <!-- ───────────────────────────────────────────────
-           WIDGET APPEARANCE SECTION
-      ─────────────────────────────────────────────── -->
-      <SettingsSection
-        title="Widget Appearance"
-        sub-title="Customize colors, fonts, and sizing for your chat widget."
-      >
-        <div class="flex flex-col gap-4 w-full max-w-3xl">
-
-          <!-- Row 1: Widget Background -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Widget Background Color</label>
-              <input v-model="widgetBgColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Widget Background Image URL</label>
-              <input v-model="widgetBgImageUrl" type="text" placeholder="https://..." class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 2: Font -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Widget Font Family</label>
-              <input v-model="widgetFontFamily" type="text" placeholder="Inter, sans-serif" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Message Font Size (px)</label>
-              <input v-model="messageFontSize" type="number" min="10" max="24" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 3: Header Colors -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Header Background</label>
-              <input v-model="headerBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Header Text Color</label>
-              <input v-model="headerTextColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 4: Welcome Heading -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Welcome Heading Color</label>
-              <input v-model="welcomeHeadingColor" type="text" placeholder="#1e293b" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Welcome Heading Size (px)</label>
-              <input v-model="welcomeHeadingSize" type="number" min="12" max="48" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 5: Welcome Tagline -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Welcome Tagline Color</label>
-              <input v-model="welcomeTaglineColor" type="text" placeholder="#64748b" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Welcome Tagline Size (px)</label>
-              <input v-model="welcomeTaglineSize" type="number" min="10" max="32" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 6: CTA Button -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">CTA Button Background</label>
-              <input v-model="ctaBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">CTA Button Text Color</label>
-              <input v-model="ctaTextColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 7: Bot Bubble -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Bot Bubble Background</label>
-              <input v-model="botBubbleBgColor" type="text" placeholder="#f1f5f9" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Bot Bubble Text Color</label>
-              <input v-model="botBubbleTextColor" type="text" placeholder="#1e293b" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 8: User Bubble -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">User Bubble Background</label>
-              <input v-model="userBubbleBgColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">User Bubble Text Color</label>
-              <input v-model="userBubbleTextColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <!-- Row 9: Input Bar -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Input Bar Background</label>
-              <input v-model="inputBarBgColor" type="text" placeholder="#ffffff" class="chatwoot-input w-full" />
-              <p class="text-xs text-n-slate-10">Background of the chat input area. Leave blank for auto-contrast.</p>
-            </div>
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Input Bar Text Color</label>
-              <input v-model="inputBarTextColor" type="text" placeholder="#1e293b" class="chatwoot-input w-full" />
-              <p class="text-xs text-n-slate-10">Text color inside the chat input. Leave blank for auto-contrast.</p>
-            </div>
-          </div>
-
-          <!-- Row 10: Input Focus -->
-          <div class="flex flex-wrap gap-4">
-            <div class="flex flex-col gap-1 flex-1 min-w-[200px]">
-              <label class="text-sm font-medium text-n-slate-12">Input Focus Border Color</label>
-              <input v-model="inputFocusColor" type="text" placeholder="#1f93ff" class="chatwoot-input w-full" />
-            </div>
-          </div>
-
-          <div class="mt-2">
-            <NextButton
-              label="Save Appearance Settings"
-              :is-loading="isUpdatingAppearance"
-              @click="updateAppearanceSettings"
-            />
-          </div>
-        </div>
-      </SettingsSection>
-      <!-- ─── END WIDGET APPEARANCE ─── -->
 
       <!-- ───────────────────────────────────────────────
            VOICE AGENT CONFIGURATION SECTION
@@ -953,19 +740,17 @@ export default {
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   border-radius: 0.5rem;
-  /* Light mode defaults */
-  border: 1px solid #e2e8f0;
-  background-color: #ffffff;
-  color: #1e293b;
+  /* Theme-aware via Chatwoot design tokens — adapts to light/dark automatically */
+  @apply bg-n-background text-n-slate-12 border border-n-weak;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   outline: none;
 
   &::placeholder {
-    color: #94a3b8;
+    @apply text-n-slate-10;
   }
 
   &:focus {
-    border-color: #1f93ff;
+    @apply border-n-brand;
     box-shadow: 0 0 0 3px rgba(31, 147, 255, 0.15);
   }
 
@@ -983,17 +768,6 @@ select.chatwoot-input {
   background-position: right 0.75rem center;
   padding-right: 2rem;
   cursor: pointer;
-}
-
-/* Dark mode override for inputs */
-:global(.dark) .chatwoot-input {
-  background-color: #1e2228;
-  color: #e2e8f0;
-  border-color: #3a3f4b;
-
-  &::placeholder {
-    color: #6b7280;
-  }
 }
 
 /* ── Status badge ── */
