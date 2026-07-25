@@ -252,8 +252,7 @@ docker compose logs rails --tail=50
 docker compose restart rails
 
 # Full reset (deletes all data!)
-docker compose down -v
-```
+
 
 ---
 
